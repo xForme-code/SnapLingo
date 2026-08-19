@@ -6,17 +6,61 @@
 
 ---
 
+## 安装
+
+macOS：下载 [Releases](../../releases) 里的 `.dmg`，拖进「应用程序」。
+
+> **首次打开会被系统拦下。** 本项目目前用自签名证书，没有做 Apple 公证，
+> 所以 Gatekeeper 会提示「无法验证开发者」。绕过方法：
+> 双击 → 点「完成」→ 打开**系统设置 → 隐私与安全性** → 下滑找到 SnapLingo → 点「**仍要打开**」。
+>
+> 注意 macOS 15 起，老教程说的「右键 → 打开」已经失效，只能走系统设置。
+>
+> 首次使用还需在**隐私与安全性 → 辅助功能**里勾选 SnapLingo（划词取词的前提），
+> 截图取词另需**屏幕录制**权限。
+
+---
+
 ## 功能
 
 | 功能 | 触发方式 |
 |---|---|
-| 划词翻译 | 鼠标拖选任意文字 → 弹出图标条 → 点「译」 |
+| 划词翻译 | 鼠标拖选任意文字 → 弹出图标条 → 点「翻译」 |
 | 快捷键翻译 | 选中文字后按 `⌥⇧T`（Win/Linux: `Alt+Shift+T`） |
-| 截图取词（OCR） | `⌥⇧A`，框选屏幕区域，识别后自动翻译 |
-| 内容提取 | 从选中文本批量抽取链接 / 邮箱 / 电话 / IP / 日期 / 金额 / 版本号 / 文件路径。**纯本地，不联网** |
-| 多段收集 | `⌥⇧C` 逐条收集 → `⌥⇧D` 打开收集夹 → 批量翻译 / 合并复制 / 导出 Markdown |
+| 截图取词 | `⌥⇧A` 框选屏幕区域 → OCR 识别 → **翻译** |
+| 截图提取 | `⌥⇧E` 框选屏幕区域 → OCR 识别 → **原样抠出文字供复制**，不翻译 |
+| 多段收集 | `⌥⇧C` 逐条收集 → `⌥⇧D` 打开收集夹 → 批量翻译 / 合并复制 / 单条导出 Markdown 文件 |
 
 快捷键可在设置里自定义（点击后直接按组合键录制）。支持开机自启。
+
+### 离线翻译
+
+**断网、代理失效、云端限流时仍然可用**，两层兜底自动接管，无需手动切换：
+
+| 层 | 引擎 | 体积 | 说明 |
+|---|---|---|---|
+| 1 | macOS 系统翻译框架 | **0**（系统管理语言包） | macOS 15+。端上推理，质量接近云端 |
+| 2 | OPUS-MT（CTranslate2 int8） | 按语言方向 60~190 MB，**按需下载** | 跨平台。长句接近 Google，短句偏生硬 |
+
+引擎链是「**联网优先、断网回落**」：云端质量更好，能用就用；4 秒内连不上就自动切本地，
+并进入 60 秒冷却期，避免断网时每次划词都白等。
+
+### 支持的翻译引擎
+
+| 引擎 | 需要 Key | 国内直连 |
+|---|---|---|
+| 系统翻译（离线） | 否 | 不需要联网 |
+| 离线模型 OPUS-MT | 否 | 不需要联网 |
+| Google | 否 | ✗ 需代理 |
+| 有道翻译 | 是 | ✓ |
+| 百度翻译 | 是 | ✓ |
+| OpenAI 兼容接口 | 是 | 取决于服务商 |
+| DeepL | 是 | ✗ 需代理 |
+| Claude | 是 | ✗ 需代理 |
+| LibreTranslate | 否（自建） | ✓ 自建即可 |
+
+「OpenAI 兼容接口」只需改接口地址，即可接入 DeepSeek / Kimi / 智谱 / 通义 / OpenRouter，
+以及 Ollama、LM Studio 等本地服务。
 
 ---
 
@@ -132,11 +176,17 @@ sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 ## 开发
 
 ```bash
+brew install cmake   # 必需：ct2rs 会从源码编译 CTranslate2（离线翻译引擎）
 npm install
-npm run icons        # 生成应用 / 托盘图标
-npm run dev          # 开发模式（会先编译 macOS OCR helper）
-npm run build        # 打包
+npm run build:helpers   # 编译 macOS 的 OCR / 系统翻译 sidecar
+npm run icons           # 生成应用 / 托盘图标
+npm run dev             # 开发模式
+npm run install:macos   # 构建 + 固定证书签名 + 装到 ~/Applications
 ```
+
+**cmake 是硬性前提**，缺了直接构建失败。首次编译 CTranslate2 约 1 分钟，之后走缓存。
+
+`sidecar` 是本机编译产物（带 target triple 后缀），不进版本库，拉下代码后需要自己生成。
 
 跨平台打包需要在对应系统上编译：macOS 上打不出 Windows 安装包。
 
@@ -164,9 +214,10 @@ src-tauri/src/
   permissions.rs       权限自检与引导
   capture.rs           截图
   ocr.rs               各平台 OCR 分发
-  extract.rs           本地正则提取
+  extract.rs           本地正则提取（链接 / 邮箱 / 电话 / 日期 / 金额…）
   collector.rs         收集夹存储
-  translate/           四个翻译引擎
+  localmodel.rs        离线模型下载与管理（断点续传）
+  translate/           翻译引擎（system / opus / google / youdao / baidu / openai / deepl / claude / libre）
   windows.rs           窗口管理
   commands.rs          暴露给前端的命令
   lib.rs               托盘 / 快捷键 / 划词流水线
