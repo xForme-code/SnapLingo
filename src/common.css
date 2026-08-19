@@ -1,0 +1,205 @@
+:root {
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-soft: #f6f7f9;
+  --bg-sunken: #f0f1f4;
+  --border: #e3e6ea;
+  --border-strong: #cfd4da;
+  --text: #16181d;
+  --text-dim: #6b727d;
+  --text-faint: #99a0aa;
+  --accent: #2e7df7;
+  --accent-hover: #1c6ae8;
+  --accent-soft: #eaf1fe;
+  --danger: #d93a3a;
+  --danger-soft: #fdecec;
+  --shadow-pop: 0 6px 24px rgba(15, 20, 30, 0.16), 0 1px 3px rgba(15, 20, 30, 0.1);
+
+  --radius-sm: 6px;
+  --radius: 9px;
+  --radius-lg: 13px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1d21;
+    --bg-elevated: #24272c;
+    --bg-soft: #22252a;
+    --bg-sunken: #17191c;
+    --border: #34383f;
+    --border-strong: #454a52;
+    --text: #e9ebee;
+    --text-dim: #9aa1ab;
+    --text-faint: #6f7681;
+    --accent: #5b9dff;
+    --accent-hover: #74adff;
+    --accent-soft: #1e2e47;
+    --danger: #ff6b6b;
+    --danger-soft: #3a2224;
+    --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- 控件 */
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  cursor: default;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--bg-soft);
+  border-color: var(--border-strong);
+}
+
+button:active:not(:disabled) {
+  background: var(--bg-sunken);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 500;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+  padding: 5px 8px;
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.42;
+}
+
+select,
+input[type='text'],
+input[type='password'],
+input[type='number'] {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  transition: border-color 0.12s ease;
+}
+
+select:focus,
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------------------------------------------------------------- 布局 */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+.muted {
+  color: var(--text-dim);
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+.tiny {
+  font-size: 11px;
+}
+
+svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 滚动条：默认那条太粗，在小面板里很抢眼 */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>SnapLingo · 收集夹</title>
+    <link rel="stylesheet" href="common.css" />
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-soft);
+        flex-wrap: wrap;
+      }
+
+      #list {
+        flex: 1;
+        overflow: auto;
+        padding: 10px 12px;
+      }
+
+      .item {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: var(--bg);
+      }
+
+      .item-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-bottom: 6px;
+      }
+
+      .badge {
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1px 7px;
+      }
+
+      .item-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.5;
+      }
+
+      .item-translation {
+        margin-top: 7px;
+        padding-top: 7px;
+        border-top: 1px dashed var(--border);
+        color: var(--accent);
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.5;
+      }
+
+      .empty {
+        color: var(--text-dim);
+        text-align: center;
+        padding: 60px 20px;
+        line-height: 1.7;
+      }
+
+      footer {
+        padding: 7px 12px;
+        border-top: 1px solid var(--border);
+        background: var(--bg-soft);
+        font-size: 11px;
+        color: var(--text-dim);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>收集夹</strong>
+      <span class="muted tiny" id="count"></span>
+      <div class="spacer"></div>
+      <button id="translateAll" class="primary">全部翻译</button>
+      <button id="copyMerged">合并复制</button>
+      <button id="copyBoth">复制原文+译文</button>
+      <button id="export">复制为 Markdown</button>
+      <button id="clear" class="danger">清空</button>
+    </header>
+
+    <div id="list"></div>
+
+    <footer id="status">选中多段文字后，用 ⌥⇧C（Windows/Linux: Alt+Shift+C）逐条收集，再在这里统一翻译、合并复制或导出。</footer>
+
+    <script type="module" src="collector.js"></script>
+  </body>
+</html>

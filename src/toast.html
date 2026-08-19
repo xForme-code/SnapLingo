@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>SnapLingo</title>
+    <link rel="stylesheet" href="common.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      /* 阴影余量走 padding，不能用 margin——height:100% 再加 margin 会撑破窗口，
+         底部圆角就会被裁掉（result.html 踩过这个坑） */
+      body {
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .toast {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        max-width: 100%;
+        padding: 9px 15px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 11px;
+        box-shadow: 0 3px 12px rgba(15, 20, 30, 0.18), 0 1px 3px rgba(15, 20, 30, 0.12);
+        font-size: 12.5px;
+        color: var(--text);
+        white-space: nowrap;
+        animation: rise 0.14s ease-out;
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(4px) scale(0.97);
+        }
+      }
+
+      .check {
+        flex-shrink: 0;
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toast">
+      <svg class="check" width="14" height="14" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+      <span id="message">已收集</span>
+    </div>
+    <script type="module" src="toast.js"></script>
+  </body>
+</html>

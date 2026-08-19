@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>SnapLingo · 设置</title>
+    <link rel="stylesheet" href="common.css" />
+    <style>
+      body { display: flex; flex-direction: column; height: 100vh; }
+
+      main { flex: 1; overflow: auto; padding: 16px 20px 24px; }
+
+      h2 {
+        font-size: 12px; font-weight: 600; color: var(--text-dim);
+        text-transform: uppercase; letter-spacing: 0.05em;
+        margin: 22px 0 10px; padding-bottom: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      h2:first-child { margin-top: 0; }
+
+      .field {
+        display: flex; align-items: center; gap: 10px;
+        padding: 7px 0; min-height: 32px;
+      }
+      .field > label { flex: 0 0 128px; font-size: 12px; }
+      .field > .control { flex: 1; display: flex; align-items: center; gap: 8px; }
+      .field input[type='text'], .field input[type='password'], .field select { flex: 1; }
+
+      .hint {
+        font-size: 11px; color: var(--text-dim);
+        margin: -2px 0 8px 138px; line-height: 1.5;
+      }
+
+      .hotkey {
+        flex: 1; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .hotkey.recording { border-color: var(--accent); color: var(--accent); }
+
+      /* ---------------------------------------------------- 离线模型列表 */
+      .model-list { margin-top: 6px; }
+
+      .model {
+        display: flex; align-items: center; gap: 10px;
+        padding: 7px 0; border-bottom: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .model:last-child { border-bottom: none; }
+      .model-name { flex: 0 0 150px; }
+      .model-size { color: var(--text-dim); font-size: 11px; flex: 0 0 82px; }
+      .model-state { flex: 1; color: var(--text-dim); font-size: 11px; min-width: 0; }
+      .model-state.ok { color: var(--accent); }
+      .model-state.err { color: var(--danger); }
+
+      /* 下载几十上百 MB，必须有进度条，否则用户以为卡死了 */
+      .bar {
+        height: 4px; border-radius: 2px; background: var(--bg-sunken);
+        overflow: hidden; margin-top: 4px;
+      }
+      .bar > i {
+        display: block; height: 100%; width: 0;
+        background: var(--accent); transition: width 0.2s ease;
+      }
+
+      footer {
+        display: flex; align-items: center; gap: 8px;
+        padding: 9px 20px; border-top: 1px solid var(--border);
+        background: var(--bg-soft); font-size: 11px;
+      }
+      .status { color: var(--text-dim); }
+      .status.error { color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h2>基本</h2>
+      <div class="field">
+        <label for="enabled">划词监听</label>
+        <div class="control">
+          <input type="checkbox" id="enabled" />
+          <span class="muted tiny">关闭后只能用快捷键触发</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="triggerMode">触发方式</label>
+        <div class="control">
+          <select id="triggerMode">
+            <option value="bubble">划词后显示图标条（推荐）</option>
+            <option value="auto">划词后自动翻译</option>
+            <option value="hotkey">仅快捷键触发</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="dragThreshold">拖选阈值</label>
+        <div class="control">
+          <input type="number" id="dragThreshold" min="0" max="80" step="1" style="width: 80px" />
+          <span class="muted tiny">像素。调大可减少误触发</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="doubleClick">双击选词</label>
+        <div class="control">
+          <input type="checkbox" id="doubleClick" />
+          <span class="muted tiny">双击一个单词也触发</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="autostart">开机自启</label>
+        <div class="control"><input type="checkbox" id="autostart" /></div>
+      </div>
+
+      <h2>翻译</h2>
+      <div class="field">
+        <label for="provider">联网时用</label>
+        <div class="control"><select id="provider"></select></div>
+      </div>
+      <div class="hint" id="providerNote"></div>
+      <div class="hint" style="margin-top: 2px">
+        联网时优先用这个引擎（质量更好）；连不上时自动改用下面的离线翻译。
+      </div>
+      <div class="field">
+        <label for="sourceLang">原文语言</label>
+        <div class="control"><select id="sourceLang"></select></div>
+      </div>
+      <div class="hint">
+        默认自动检测。短词、专有名词、简繁体容易被认错，这类内容多的话可以固定指定。
+      </div>
+      <div class="field">
+        <label for="targetLang">目标语言</label>
+        <div class="control"><select id="targetLang"></select></div>
+      </div>
+      <div class="field">
+        <label for="splitIdentifiers">标识符拆词</label>
+        <div class="control">
+          <input type="checkbox" id="splitIdentifiers" />
+          <span class="muted tiny">把 user_name / getUserInfo 拆成自然语言再翻译</span>
+        </div>
+      </div>
+
+      <h2>离线翻译（可选）</h2>
+      <div class="field">
+        <label>语言包状态</label>
+        <div class="control">
+          <span id="packStatus" class="muted tiny">正在检查…</span>
+          <div style="flex: 1"></div>
+          <button id="downloadPack" disabled>下载语言包</button>
+        </div>
+      </div>
+      <div class="hint">
+        系统翻译在本机运行，不联网、不花钱、内容不外发。<b>装不装都不影响联网时的正常使用</b>，
+        但装了以后断网、代理失效、云端限流时仍能翻译。<br />
+        下载需要联网，点上面的按钮后系统会弹出确认窗口。也可以在
+        <b>系统设置 → 通用 → 语言与地区 → 翻译语言</b> 里自行管理和删除。
+      </div>
+
+      <h2>离线模型（跨平台备选，按需下载）</h2>
+      <div class="hint" style="margin-left: 0">
+        系统翻译不支持的语言对，或在 macOS 15 以下 / Windows / Linux 上，可以用
+        OPUS-MT 离线模型顶上。<b>模型不含在安装包里</b>，按语言方向单独下载，
+        每个 60~190 MB，下完即可完全离线翻译。
+      </div>
+      <div id="modelList" class="model-list">正在读取…</div>
+
+      <h2>引擎凭据（不填就不启用该引擎）</h2>
+      <div class="hint" style="margin-left: 0; margin-bottom: 10px">
+        下面这些都是可选的。<b>国内网络建议配有道或百度</b>——它们不需要代理，
+        Google / DeepL / Claude / OpenAI 在国内都要走代理。
+      </div>
+
+      <div class="field">
+        <label for="youdaoAppKey">有道 应用ID</label>
+        <div class="control"><input type="text" id="youdaoAppKey" placeholder="国内直连，有免费额度" /></div>
+      </div>
+      <div class="field">
+        <label for="youdaoAppSecret">有道 密钥</label>
+        <div class="control"><input type="password" id="youdaoAppSecret" /></div>
+      </div>
+      <div class="hint">在「有道智云」控制台创建自然语言翻译服务后获取。</div>
+
+      <div class="field">
+        <label for="baiduAppId">百度 APP ID</label>
+        <div class="control"><input type="text" id="baiduAppId" placeholder="国内直连，申请最简单" /></div>
+      </div>
+      <div class="field">
+        <label for="baiduSecret">百度 密钥</label>
+        <div class="control"><input type="password" id="baiduSecret" /></div>
+      </div>
+      <div class="hint">在「百度翻译开放平台」注册通用文本翻译后获取。</div>
+
+      <div class="field">
+        <label for="openaiApiKey">OpenAI Key</label>
+        <div class="control"><input type="password" id="openaiApiKey" placeholder="sk-..." /></div>
+      </div>
+      <div class="field">
+        <label for="openaiBaseUrl">接口地址</label>
+        <div class="control"><input type="text" id="openaiBaseUrl" /></div>
+      </div>
+      <div class="field">
+        <label for="openaiModel">模型</label>
+        <div class="control"><input type="text" id="openaiModel" /></div>
+      </div>
+      <div class="hint">
+        改接口地址即可接入其它服务，例如
+        <code>https://api.deepseek.com/v1</code>、
+        <code>https://open.bigmodel.cn/api/paas/v4</code>、
+        <code>http://localhost:11434/v1</code>（Ollama，本地无需 Key）。
+      </div>
+
+      <div class="field">
+        <label for="deeplApiKey">DeepL Key</label>
+        <div class="control">
+          <input type="password" id="deeplApiKey" placeholder="免费版每月 50 万字符" />
+          <label class="tiny muted"><input type="checkbox" id="deeplPro" /> Pro</label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="claudeApiKey">Claude Key</label>
+        <div class="control">
+          <input type="password" id="claudeApiKey" placeholder="sk-ant-..." />
+        </div>
+      </div>
+      <div class="field">
+        <label for="claudeModel">Claude 模型</label>
+        <div class="control"><input type="text" id="claudeModel" /></div>
+      </div>
+      <div class="field">
+        <label for="libreUrl">LibreTranslate</label>
+        <div class="control">
+          <input type="text" id="libreUrl" placeholder="http://localhost:5555" />
+        </div>
+      </div>
+      <div class="hint">
+        自建命令：<code>docker run -d -p 5555:5000 -e LT_LOAD_ONLY=en,zh libretranslate/libretranslate</code><br />
+        不要用 5000 端口：macOS 的控制中心（AirPlay 接收器）常驻占用它。<br />
+        公共实例大多已关闭或需要 Key，建议自建，数据不出内网。
+      </div>
+
+      <h2>快捷键</h2>
+      <div class="field">
+        <label>翻译选中内容</label>
+        <div class="control"><button class="hotkey" data-key="translate"></button></div>
+      </div>
+      <div class="field">
+        <label>截图取词</label>
+        <div class="control"><button class="hotkey" data-key="ocr"></button></div>
+      </div>
+      <div class="field">
+        <label>截图提取内容</label>
+        <div class="control"><button class="hotkey" data-key="extract"></button></div>
+      </div>
+      <div class="field">
+        <label>加入收集夹</label>
+        <div class="control"><button class="hotkey" data-key="collect"></button></div>
+      </div>
+      <div class="field">
+        <label>打开收集夹</label>
+        <div class="control"><button class="hotkey" data-key="collector"></button></div>
+      </div>
+      <div class="hint">点击按钮后直接按下想要的组合键。至少包含一个修饰键（⌘ / ⌥ / ⌃ / ⇧）。</div>
+
+      <h2>文字识别</h2>
+      <div class="field">
+        <label>OCR 引擎</label>
+        <div class="control"><span class="muted tiny" id="ocrEngine"></span></div>
+      </div>
+      <div class="field">
+        <label for="ocrLanguages">识别语言</label>
+        <div class="control">
+          <input type="text" id="ocrLanguages" placeholder="zh-Hans,en-US" />
+        </div>
+      </div>
+      <div class="hint">逗号分隔，靠前的语言优先。macOS 支持 30 种语言，无需下载。</div>
+    </main>
+
+    <footer>
+      <span class="status" id="status">修改会立即保存</span>
+      <div class="spacer"></div>
+      <span class="muted tiny" id="configPath"></span>
+    </footer>
+
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

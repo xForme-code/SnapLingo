@@ -1,0 +1,24 @@
+# Rust 构建产物。这个目录会涨到 10GB 以上（CTranslate2 静态库 + 多次 debug/release）
+/src-tauri/target/
+
+# sidecar 是本机编译产物，带 target triple 后缀，各平台不通用。
+# 拉下代码后跑 scripts/build-*.sh 重新生成即可。
+/src-tauri/binaries/
+
+# Tauri 自动生成的权限 schema
+/src-tauri/gen/
+
+node_modules/
+# VitePress 缓存（任意层级）
+**/.vitepress/cache/
+**/.vitepress/dist/
+
+# 打包产物
+*.dmg
+*.app
+
+.DS_Store
+*.log
+
+# 编辑器 / 助手的本机配置
+.claude/

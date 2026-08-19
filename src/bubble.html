@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>SnapLingo</title>
+    <link rel="stylesheet" href="common.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      /* 同 result.html：阴影余量走 body 的 padding，避免撑破窗口 */
+      body {
+        padding: 14px;
+      }
+
+      /* 窗口本身是透明的，圆角和阴影全部在这一层画 */
+      .bar {
+        display: flex;
+        align-items: center;
+        height: 36px;
+        padding: 0 4px;
+        gap: 0;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        /* 同 result.html：阴影不能超出 margin，否则被窗口边界切成灰框 */
+        box-shadow: 0 3px 12px rgba(15, 20, 30, 0.18), 0 1px 3px rgba(15, 20, 30, 0.12);
+        animation: pop 0.13s ease-out;
+      }
+
+      @keyframes pop {
+        from {
+          opacity: 0;
+          transform: translateY(-3px) scale(0.97);
+        }
+      }
+
+      /* 所有动作一视同仁：不给某一项加重色块，整条更安静，
+         也更接近系统级取词条的观感 */
+      .act {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 28px;
+        padding: 0 10px;
+        border: none;
+        background: transparent;
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 12.5px;
+        transition: background 0.1s ease, color 0.1s ease;
+      }
+
+      .act:hover {
+        background: var(--bg-sunken);
+        color: var(--accent);
+      }
+
+      .act:active {
+        transform: scale(0.96);
+      }
+
+      .act.done {
+        color: var(--accent);
+      }
+
+      .act svg {
+        flex-shrink: 0;
+        opacity: 0.85;
+      }
+
+      .divider {
+        width: 1px;
+        height: 15px;
+        background: var(--border);
+        margin: 0 3px;
+        flex-shrink: 0;
+      }
+
+      .close {
+        padding: 0 7px;
+        color: var(--text-faint);
+      }
+
+      .close:hover {
+        background: var(--bg-sunken);
+        color: var(--text);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button class="act" id="translate" title="翻译这段文字">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5h10M9 3v2c0 4-2 7-5 9" />
+          <path d="M5 10c1 3 3 5 7 6" />
+          <path d="M13 21l4-10 4 10M14.5 17h5" />
+        </svg>
+        翻译
+      </button>
+
+      <button class="act" id="copy" title="复制原文">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+        </svg>
+        复制
+      </button>
+
+      <button class="act" id="collect" title="加入收集夹">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+        </svg>
+        收集
+      </button>
+
+      <div class="divider"></div>
+
+      <button class="act close" id="close" title="关闭">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+    </div>
+    <script type="module" src="bubble.js"></script>
+  </body>
+</html>

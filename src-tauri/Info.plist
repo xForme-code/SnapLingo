@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 常驻菜单栏的工具，不在 Dock 占位、不出现在 ⌘Tab 里 -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- 下面几条是权限弹窗里给用户看的说明文案。
+         不写的话 macOS 会显示一句干巴巴的默认文案，用户不知道为什么要授权。 -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>SnapLingo 需要发送复制指令来读取你选中的文字。</string>
+
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>SnapLingo 需要截取屏幕区域，才能识别图片里的文字。</string>
+</dict>
+</plist>

@@ -1,0 +1,79 @@
+[package]
+name = "snaplingo"
+version = "0.1.0"
+description = "跨平台划词翻译 / OCR / 内容提取工具"
+authors = ["SnapLingo"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "snaplingo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# macos-private-api 用于窗口透明：气泡要圆角+阴影，直角窗口套圆角 CSS 会露边。
+# 代价是不能上架 App Store（本项目走 DMG 分发，可以接受）。
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 取词：模拟按键 + 剪贴板存取还原
+enigo = "0.6"
+arboard = "3"
+
+# 全局鼠标钩子（监听拖选动作）。
+# 用 vendor 里打过补丁的版本：原版在 macOS 上收到键盘事件时会在钩子线程
+# 调用 TSM API，新版 macOS 直接断言崩溃（见 vendor/rdev/src/macos/common.rs）。
+rdev = "0.5"
+
+# 截图
+xcap = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# 网络
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "process"] }
+urlencoding = "2"
+
+# 离线模型包是 zip（Argos 的 .argosmodel），下载后要就地解开
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# 国内几家翻译 API 都要请求签名：百度用 MD5，有道用 SHA256
+md-5 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+
+regex = "1"
+once_cell = "1"
+anyhow = "1"
+dirs = "5"
+log = "0.4"
+
+# OPUS-MT 离线推理。不要默认特性：默认会拉 HuggingFace tokenizers 和一堆
+# CUDA 相关依赖，而 Argos/OPUS-MT 只用 sentencepiece。
+# accelerate 让 macOS 用系统 BLAS，静态链接后整个引擎只有约 3MB。
+[target.'cfg(target_os = "macos")'.dependencies]
+ct2rs = { version = "0.10", default-features = false, features = ["sentencepiece", "ruy", "accelerate"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+ct2rs = { version = "0.10", default-features = false, features = ["sentencepiece", "ruy"] }
+
+[patch.crates-io]
+rdev = { path = "vendor/rdev" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
