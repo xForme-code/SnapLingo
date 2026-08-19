@@ -6,6 +6,31 @@
 
 ---
 
+## 界面
+
+划词后弹出的图标条，贴着光标出现：
+
+<img src="assets/screenshots/bubble-light.png" width="252" alt="划词图标条">
+
+翻译面板 · 截图提取面板（浅色 / 深色）：
+
+| 翻译 | 截图提取 |
+|---|---|
+| <img src="assets/screenshots/translate-light.png" width="380" alt="翻译面板"> | <img src="assets/screenshots/extract-light.png" width="380" alt="提取面板"> |
+| <img src="assets/screenshots/translate-dark.png" width="380" alt="翻译面板深色"> | <img src="assets/screenshots/extract-dark.png" width="380" alt="提取面板深色"> |
+
+收集夹——多段暂存、批量翻译、单条导出 Markdown：
+
+<img src="assets/screenshots/collector-light.png" width="760" alt="收集夹">
+
+设置：
+
+<img src="assets/screenshots/settings-light.png" width="700" alt="设置">
+
+外观支持**跟随系统 / 浅色 / 深色**三种，在设置里切换，所有窗口即时生效。
+
+---
+
 ## 安装
 
 macOS：下载 [Releases](../../releases) 里的 `.dmg`，拖进「应用程序」。

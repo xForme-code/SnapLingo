@@ -1,4 +1,4 @@
-import { api, errorText } from './api.js';
+import { api, errorText , initTheme } from './api.js';
 
 const el = (id) => document.getElementById(id);
 const ui = {
@@ -286,3 +286,5 @@ document.addEventListener('keydown', (event) => {
 });
 
 void init();
+
+void initTheme();

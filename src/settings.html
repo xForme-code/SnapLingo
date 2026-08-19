@@ -104,8 +104,25 @@
         </div>
       </div>
       <div class="field">
+        <label for="theme">外观</label>
+        <div class="control">
+          <select id="theme">
+            <option value="system">跟随系统</option>
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
         <label for="autostart">开机自启</label>
         <div class="control"><input type="checkbox" id="autostart" /></div>
+      </div>
+      <div class="field">
+        <label for="autoCheckUpdate">自动检查更新</label>
+        <div class="control">
+          <input type="checkbox" id="autoCheckUpdate" />
+          <span class="muted tiny">启动后静默检查一次，有新版本才询问。关掉后可在托盘菜单手动检查</span>
+        </div>
       </div>
 
       <h2>翻译</h2>

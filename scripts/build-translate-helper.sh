@@ -23,7 +23,10 @@ OUT="src-tauri/binaries/snaplingo-translate-${TRIPLE}"
 mkdir -p src-tauri/binaries
 
 # -parse-as-library 配合 @main：否则 Swift 会把顶层代码当脚本处理，和 @main 冲突
-swiftc -O -parse-as-library helpers/macos-translate.swift -o "$OUT"
+# 同 OCR helper：必须显式指定部署目标，否则 minos 会变成编译机器的系统版本，
+# 在更低版本的 Mac 上无法启动。Translation 框架从 macOS 15 才有，所以定 15.0——
+# 低于 15 的系统上这个 sidecar 启动失败，Rust 侧会回落到 OPUS-MT 或云端。
+swiftc -O -parse-as-library -target arm64-apple-macos15.0 helpers/macos-translate.swift -o "$OUT"
 chmod +x "$OUT"
 
 echo "[translate-helper] 已生成 $OUT ($(du -h "$OUT" | cut -f1))"

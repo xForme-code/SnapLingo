@@ -34,17 +34,23 @@ export APPLE_SIGNING_IDENTITY="$CERT"
 npx -y @tauri-apps/cli@^2 build --bundles dmg,app
 
 BUNDLE="src-tauri/target/release/bundle"
-DMG="$BUNDLE/dmg/SnapLingo_${VERSION}_aarch64.dmg"
+# Tauri 的默认命名是 SnapLingo_0.2.1_aarch64.dmg，下面会统一改成
+# snaplingo-<版本>.dmg。改名只在上传前做，构建产物本身不动。
+DMG_RAW="$BUNDLE/dmg/SnapLingo_${VERSION}_aarch64.dmg"
+DMG="$BUNDLE/dmg/snaplingo-${VERSION}.dmg"
 TARBALL="$BUNDLE/macos/SnapLingo.app.tar.gz"
 SIGFILE="$TARBALL.sig"
 
-for f in "$DMG" "$TARBALL" "$SIGFILE"; do
+for f in "$DMG_RAW" "$TARBALL" "$SIGFILE"; do
   [[ -f "$f" ]] || { echo "[error] 缺少产物: $f"; exit 1; }
 done
 
+cp "$DMG_RAW" "$DMG"
+
 # ---------------------------------------------------------------- 更新清单
-# 文件名必须和上传到 Release 的一致，否则旧版本下载会 404
-ASSET="SnapLingo_${VERSION}_aarch64.app.tar.gz"
+# 文件名必须和上传到 Release 的一致，否则旧版本下载会 404。
+# 这里和 DMG 用同一套命名，Release 页面看起来才整齐。
+ASSET="snaplingo-${VERSION}.app.tar.gz"
 cp "$TARBALL" "$BUNDLE/macos/$ASSET"
 
 echo "[manifest] 生成 latest.json"
@@ -67,12 +73,22 @@ PY
 
 # ---------------------------------------------------------------- 发布
 echo "[publish] 上传到 GitHub Release $TAG"
-gh release create "$TAG" \
-  "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" \
-  --title "SnapLingo $TAG" --notes-file "${NOTES_FILE:-/dev/stdin}" || {
-    echo "[publish] Release 已存在，改为覆盖上传资产"
-    gh release upload "$TAG" "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" --clobber
-  }
+# 发布说明：优先用 NOTES_FILE 指定的文件，没给就生成一份最简的。
+# 不能缺省读 /dev/stdin —— 非交互环境下 gh 会一直挂着等输入。
+if [[ -n "${NOTES_FILE:-}" && -f "${NOTES_FILE}" ]]; then
+  NOTES_ARG=(--notes-file "$NOTES_FILE")
+else
+  NOTES_ARG=(--notes "SnapLingo $TAG")
+fi
+
+if gh release view "$TAG" >/dev/null 2>&1; then
+  echo "[publish] Release 已存在，覆盖上传资产"
+  gh release upload "$TAG" "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" --clobber
+else
+  gh release create "$TAG" \
+    "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" \
+    --title "SnapLingo $TAG" "${NOTES_ARG[@]}"
+fi
 
 echo ""
 echo "[done] https://github.com/$REPO/releases/tag/$TAG"

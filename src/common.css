@@ -24,8 +24,13 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* 主题分三态：
+   1. 未指定 data-theme → 跟随系统（下面的 media query）
+   2. data-theme="light" → 强制浅色，media query 里用 :not() 排除掉
+   3. data-theme="dark"  → 强制深色，单独一条规则
+   只重定义颜色变量，其余样式共用一套。 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #1b1d21;
     --bg-elevated: #24272c;
     --bg-soft: #22252a;
@@ -43,6 +48,25 @@
     --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 }
+
+:root[data-theme='dark'] {
+    --bg: #1b1d21;
+    --bg-elevated: #24272c;
+    --bg-soft: #22252a;
+    --bg-sunken: #17191c;
+    --border: #34383f;
+    --border-strong: #454a52;
+    --text: #e9ebee;
+    --text-dim: #9aa1ab;
+    --text-faint: #6f7681;
+    --accent: #5b9dff;
+    --accent-hover: #74adff;
+    --accent-soft: #1e2e47;
+    --danger: #ff6b6b;
+    --danger-soft: #3a2224;
+    --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
 
 * {
   box-sizing: border-box;

@@ -71,6 +71,32 @@ export const api = {
   on: (event, handler) => listen(event, (e) => handler(e.payload)),
 };
 
+/// 应用主题。
+///
+/// 三态：system 跟随系统 / light 强制浅色 / dark 强制深色。
+/// 实现方式是给 <html> 打 data-theme 属性，CSS 里三条规则各管一态——
+/// 不需要在 JS 里搬运任何颜色值。
+export function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light' || theme === 'dark') {
+    root.dataset.theme = theme;
+  } else {
+    delete root.dataset.theme;
+  }
+}
+
+/// 每个窗口加载时调一次：读配置应用主题，并订阅后续变更。
+/// 订阅是必要的——设置窗口改了主题，其它已打开的窗口要立刻跟着变。
+export async function initTheme() {
+  try {
+    const cfg = await api.getConfig();
+    applyTheme(cfg.theme);
+  } catch {
+    /* 配置读不到就保持跟随系统 */
+  }
+  void api.on('config:changed', (cfg) => applyTheme(cfg?.theme));
+}
+
 /// 统一的错误文案：Rust 端返回的已经是给人看的中文，直接透传
 export function errorText(err) {
   if (typeof err === 'string') return err;

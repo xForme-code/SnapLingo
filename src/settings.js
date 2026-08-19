@@ -1,4 +1,4 @@
-import { api, errorText } from './api.js';
+import { api, errorText , initTheme } from './api.js';
 
 const el = (id) => document.getElementById(id);
 const statusEl = el('status');
@@ -114,10 +114,12 @@ async function init() {
   bindCheckbox('enabled', 'enabled');
   bindCheckbox('doubleClick', 'triggerOnDoubleClick');
   bindCheckbox('autostart', 'autostart');
+  bindCheckbox('autoCheckUpdate', 'autoCheckUpdate');
   bindCheckbox('splitIdentifiers', 'splitIdentifiers');
   bindCheckbox('deeplPro', 'deeplPro');
 
   bindSelect('triggerMode', 'triggerMode');
+  bindSelect('theme', 'theme');
 
   bindText('youdaoAppKey', 'youdaoAppKey');
   bindText('youdaoAppSecret', 'youdaoAppSecret');
@@ -327,3 +329,5 @@ api.on('model:progress', (p) => {
 });
 
 void init();
+
+void initTheme();

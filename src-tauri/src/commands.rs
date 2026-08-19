@@ -30,6 +30,12 @@ pub fn set_config(app: AppHandle, patch: Value) -> Result<config::Config, String
     let saved = config::save(next).map_err(to_message)?;
 
     crate::apply_config_side_effects(&app, &saved);
+
+    // 广播给所有已打开的窗口。不广播的话，改了主题要把面板关掉重开才生效。
+    {
+        use tauri::Emitter;
+        let _ = app.emit("config:changed", &saved);
+    }
     Ok(saved)
 }
 
@@ -261,13 +267,13 @@ pub fn collector_export_item(app: AppHandle, id: String) -> Result<String, Strin
 
     std::fs::write(&path, markdown).map_err(|e| format!("写入文件失败: {e}"))?;
 
-    // 在访达里选中它，省得用户去翻文件夹
+    // 在访达里选中它。这一步本身就是最好的反馈——文件和它的位置都摆在眼前，
+    // 再弹一个「已导出」的提示纯属重复告知。
     {
         use tauri_plugin_opener::OpenerExt;
         let _ = app.opener().reveal_item_in_dir(&path);
     }
 
-    let _ = windows::show_toast(&app, "已导出 Markdown 文件");
     Ok(path.to_string_lossy().to_string())
 }
 

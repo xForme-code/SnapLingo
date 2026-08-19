@@ -1,4 +1,4 @@
-import { api } from './api.js';
+import { api , initTheme } from './api.js';
 
 let current = { text: '', source: 'selection' };
 let hideTimer = null;
@@ -70,3 +70,5 @@ document.getElementById('close').addEventListener('click', () => api.hideBubble(
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') api.hideBubble();
 });
+
+void initTheme();

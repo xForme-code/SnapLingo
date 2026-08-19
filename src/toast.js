@@ -1,4 +1,4 @@
-import { api } from './api.js';
+import { api , initTheme } from './api.js';
 
 /// 一闪即逝的操作确认。
 ///
@@ -19,3 +19,5 @@ async function pull() {
 
 api.on('toast:pending', () => void pull());
 void pull();
+
+void initTheme();

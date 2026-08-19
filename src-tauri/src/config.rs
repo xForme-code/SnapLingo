@@ -80,6 +80,16 @@ pub struct Config {
     pub split_identifiers: bool,
     /// 开机自启
     pub autostart: bool,
+    /// 界面主题："system" 跟随系统 / "light" 浅色 / "dark" 深色
+    #[serde(default = "default_system")]
+    pub theme: String,
+    /// 是否自动检查更新。
+    ///
+    /// 必须显式指定 default：bool 的默认值是 false，老配置文件里没有这个字段时
+    /// 会被填成 false，等于**静默关掉自动更新**——用户什么都没做却再也收不到新版本。
+    /// （source_lang 当初就踩过同一个坑。）
+    #[serde(default = "default_true")]
+    pub auto_check_update: bool,
     /// 是否已经提示过「可以下载离线语言包」。
     /// 这个提示只在联网时出现一次——断网时提示下载毫无意义，那会儿也下不了。
     pub offline_hint_dismissed: bool,
@@ -141,6 +151,8 @@ impl Default for Config {
             max_length: 8000,
             split_identifiers: true,
             autostart: false,
+            theme: default_system(),
+            auto_check_update: true,
             offline_hint_dismissed: false,
             hotkeys: Hotkeys::default(),
             ocr_languages: vec!["zh-Hans".into(), "en-US".into()],
@@ -163,6 +175,14 @@ impl Default for Config {
 
 fn default_auto() -> String {
     "auto".into()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_system() -> String {
+    "system".into()
 }
 
 static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| RwLock::new(load_from_disk()));

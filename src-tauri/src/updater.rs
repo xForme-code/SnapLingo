@@ -17,6 +17,13 @@ const STARTUP_DELAY: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// 静默检查：有更新才出声，没有就什么都不做。
 pub fn check_on_startup(app: &AppHandle) {
+    // 用户关掉了就彻底不查：不发请求、不弹窗。
+    // 托盘菜单里的「检查更新…」不受影响，想查随时手动查。
+    if !crate::config::get().auto_check_update {
+        log::info!("自动检查更新已关闭，跳过启动检查");
+        return;
+    }
+
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(STARTUP_DELAY).await;

@@ -1,4 +1,4 @@
-import { api, errorText } from './api.js';
+import { api, errorText , initTheme } from './api.js';
 
 const listEl = document.getElementById('list');
 const countEl = document.getElementById('count');
@@ -42,7 +42,7 @@ function render() {
             <span style="flex:1"></span>
             <button data-act="copy">复制</button>
             <button data-act="translate">翻译</button>
-            <button data-act="export">导出 MD</button>
+            <button data-act="export">导出 Markdown 文件</button>
             <button data-act="remove" class="danger">删除</button>
           </div>
           <div class="item-text selectable">${escapeHtml(item.text)}</div>
@@ -143,3 +143,5 @@ document.addEventListener('keydown', (event) => {
 });
 
 void refresh();
+
+void initTheme();
