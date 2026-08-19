@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SnapLingo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.snaplingo.desktop",
   "build": {
     "frontendDist": "../src"
@@ -44,7 +44,18 @@
           "libwebkit2gtk-4.1-0"
         ]
       }
-    }
+    },
+    "createUpdaterArtifacts": true
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/xForme-code/snaplingo/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdFNkNGQUREMEZCNTY3RjUKUldUMVo3VVAzZnBzZm44K0tQSmRvajY1T25IYTE0Ny9mRytyOW1YU1Jvbm12cjM3d2NRQk1wRGkK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
 }

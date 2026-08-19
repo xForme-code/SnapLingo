@@ -23,6 +23,26 @@ open ~/Applications/SnapLingo.app
 （`SnapLingo Dev Signing`），这样 macOS 的辅助功能授权才能跨重建保留。换成 ad-hoc 签名的话，
 每次编译授权都会作废，你会被反复要求重新授权。
 
+## 发布新版本
+
+```bash
+bash scripts/release-macos.sh 0.3.0
+```
+
+脚本会：编译 sidecar → 构建并**双重签名** → 生成 `latest.json` → 发到 GitHub Release。
+
+**两套签名不要混淆，缺一不可：**
+
+| 签名 | 用途 | 丢了会怎样 |
+|---|---|---|
+| 代码签名（钥匙串里的 `SnapLingo Dev Signing`） | 让 macOS 允许运行 | 用户装不上；重建后 TCC 授权也会作废 |
+| 更新签名（`~/.snaplingo-keys/updater.key`） | 让旧版本相信这个更新包是你发的 | **所有已安装用户永远收不到更新**，只能让他们手动重装 |
+
+更新私钥务必备份到密码管理器或离线介质。它不在仓库里（放在 `~/.snaplingo-keys/`），
+公钥编译进应用（`tauri.conf.json` 的 `plugins.updater.pubkey`）。
+
+发版前记得改 `src-tauri/tauri.conf.json` 里的 `version`——更新检查是靠版本号比对的。
+
 ## 排查的第一现场
 
 ```bash

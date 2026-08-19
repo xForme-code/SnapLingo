@@ -10,6 +10,7 @@ mod ocr;
 mod permissions;
 mod selection;
 mod translate;
+mod updater;
 mod windows;
 
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -36,6 +37,7 @@ pub fn run() {
                 log::error!("打开设置窗口失败: {err}");
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -120,6 +122,7 @@ pub fn run() {
 
             // 只在首次运行时提示权限；之后交给功能失败时的按需提示
             permissions::check_on_startup(&handle, first_run);
+            updater::check_on_startup(&handle);
 
             if first_run {
                 // 落盘一份默认配置，这样「首次运行」只判定一次
@@ -568,6 +571,7 @@ pub fn refresh_tray(app: &AppHandle) {
             .separator()
             .item(&mode)
             .item(&MenuItemBuilder::with_id("settings", "设置…").build(app)?)
+            .item(&MenuItemBuilder::with_id("update", "检查更新…").build(app)?)
             .separator()
             .item(&MenuItemBuilder::with_id("quit", "退出 SnapLingo").build(app)?)
             .build()
@@ -602,6 +606,7 @@ fn on_tray_menu(app: &AppHandle, id: &str) {
         "settings" => {
             let _ = windows::show_settings(app);
         }
+        "update" => updater::check_manually(app),
         "quit" => app.exit(0),
         _ => {}
     }
