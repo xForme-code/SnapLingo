@@ -115,7 +115,23 @@ pub fn init() {
     let path = log_path();
     let _ = std::fs::create_dir_all(crate::config::config_dir());
 
-    // 每次启动截断，避免日志无限增长——这是排查工具不是审计日志
+    // 启动前把上一轮的日志留一份。
+    //
+    // 只截断不备份的话，排查时会很难受：应用一旦重启（尤其自动更新后会自动
+    // 重启），刚复现出来的现场就被清空了，用户白试一次。留一份上轮日志，
+    // 代价只是多一个文件，收益是"重启前发生了什么"永远可查。
+    let previous = crate::config::config_dir().join("snaplingo.log.1");
+    // 必须先删目标：Windows 上 rename 到已存在的文件会直接失败，
+    // 结果是上一轮日志没备份、当前日志照样被截断，等于白做。
+    let _ = std::fs::remove_file(&previous);
+    if let Err(err) = std::fs::rename(&path, &previous) {
+        // 首次运行时源文件不存在，这是正常的；其它错误值得让人看见
+        if err.kind() != std::io::ErrorKind::NotFound {
+            eprintln!("[snaplingo] 轮转上一轮日志失败: {err}");
+        }
+    }
+
+    // 仍然每次启动开新文件，避免日志无限增长——这是排查工具不是审计日志
     let file = OpenOptions::new()
         .create(true)
         .write(true)

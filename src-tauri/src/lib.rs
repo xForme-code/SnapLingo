@@ -389,7 +389,7 @@ fn translate_selection(app: &AppHandle, show_panel: bool) {
     });
 }
 
-/// 截图取词是否正在进行。
+/// 截图翻译是否正在进行。
 ///
 /// 没有这个闸门时，重复按快捷键会并发起多个 `screencapture -i`，
 /// 后来的那个通常会立刻退出、什么都不做——表现就是「按了没反应」。
@@ -397,11 +397,11 @@ static OCR_BUSY: AtomicBool = AtomicBool::new(false);
 
 /// 框选一块屏幕 → OCR → 翻译或提取。
 ///
-/// `translate=true` 是「截图取词」：把图里的外文译过来。
+/// `translate=true` 是「截图翻译」：把图里的外文译过来。
 /// `translate=false` 是「截图提取」：把图里的文字、号码、链接抠成可复制的文本，
 /// 不做翻译——这才是「我有张图，想把里面的内容拿出来用」的场景。
 fn run_capture_flow(app: &AppHandle, translate: bool) {
-    let action = if translate { "截图取词" } else { "截图提取" };
+    let action = if translate { "截图翻译" } else { "截图提取" };
 
     // 没有屏幕录制权限时 screencapture 会静默产出一张黑图，
     // 与其让用户对着空结果发懵，不如先触发系统授权弹窗。
@@ -558,11 +558,11 @@ pub fn refresh_tray(app: &AppHandle) {
             ).build(app)?)
             .item(&MenuItemBuilder::with_id(
                 "ocr",
-                format!("截图取词\t{}", cfg.hotkeys.ocr),
+                format!("截图翻译\t{}", cfg.hotkeys.ocr),
             ).build(app)?)
             .item(&MenuItemBuilder::with_id(
                 "extract",
-                format!("截图提取内容\t{}", cfg.hotkeys.extract),
+                format!("截图提取文字\t{}", cfg.hotkeys.extract),
             ).build(app)?)
             .item(&MenuItemBuilder::with_id(
                 "collector",

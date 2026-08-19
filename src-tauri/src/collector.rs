@@ -36,8 +36,8 @@ fn load() -> Vec<Item> {
 
 fn persist(items: &[Item]) {
     if let Err(err) = (|| -> Result<()> {
-        std::fs::create_dir_all(config_dir())?;
-        std::fs::write(store_path(), serde_json::to_string_pretty(items)?)?;
+        // 收集夹里是用户攒下的内容，写坏了就真丢了，必须原子写
+        crate::config::write_atomic(&store_path(), &serde_json::to_string_pretty(items)?)?;
         Ok(())
     })() {
         log::warn!("收集夹保存失败: {err}");
@@ -137,7 +137,7 @@ pub fn item_markdown(id: &str) -> Option<(String, String)> {
     let items = list();
     let item = items.iter().find(|i| i.id == id)?;
 
-    let kind = if item.source == "ocr" { "截图取词" } else { "划词" };
+    let kind = if item.source == "ocr" { "截图翻译" } else { "划词" };
     let stamp = format_time(item.created_at);
 
     let mut out = format!("# {kind}摘录\n\n> 收集于 {stamp}\n\n{}\n", item.text);
@@ -154,10 +154,13 @@ pub fn item_markdown(id: &str) -> Option<(String, String)> {
         .take(24)
         .collect();
     let slug = slug.trim().replace(' ', "-");
+    // 必须带上唯一后缀：文件名只取正文前 24 字，两条开头相同的内容
+    // （比如从同一段话里截取的）会算出同名文件，直接写就是静默覆盖。
+    let suffix = &item.id;
     let name = if slug.is_empty() {
-        format!("SnapLingo-{}.md", item.created_at)
+        format!("SnapLingo-{suffix}.md")
     } else {
-        format!("SnapLingo-{slug}.md")
+        format!("SnapLingo-{slug}-{suffix}.md")
     };
 
     Some((name, out))
@@ -181,7 +184,7 @@ pub fn to_markdown() -> String {
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            let kind = if item.source == "ocr" { "截图取词" } else { "划词" };
+            let kind = if item.source == "ocr" { "截图翻译" } else { "划词" };
             let quoted = item
                 .translation
                 .as_ref()

@@ -23,6 +23,12 @@ const state = {
   target: null,
   busy: false,
   hintShown: false,
+  /// 请求代号。每发起一次翻译就 +1，回来时对不上就丢弃。
+  ///
+  /// 不这么做的话：A 还在翻时划了 B，B 的请求被 busy 挡掉，然后 A 的译文
+  /// 被写进正在显示 B 原文的窗口——用户看到的是张冠李戴的结果，
+  /// 还可能把它复制或收集走。
+  generation: 0,
 };
 
 /// 语言代码 → 中文名。引擎返回的是 en / zh-CN 这类代码，直接显示不好读。
@@ -177,6 +183,8 @@ async function pull() {
 }
 
 function load(payload) {
+  // 换了内容，在途的旧请求一律作废
+  state.generation += 1;
   state.text = payload.text;
   state.source = payload.source;
   state.output = '';
@@ -211,11 +219,16 @@ function load(payload) {
 api.on('result:pending', () => void pull());
 
 async function runTranslate() {
-  if (!state.text || state.busy) return;
+  if (!state.text) return;
+
+  // 不再用 busy 挡新请求——挡掉的是**更新的**那个，正好搞反了。
+  // 改成每次都放行，用代号保证只有最后一次的结果能落到界面上。
+  const mine = ++state.generation;
   setBusy(true);
   showSkeleton();
   try {
     const result = await api.translate(state.text, ui.source.value, ui.target.value, null);
+    if (mine !== state.generation) return; // 已有更新的请求，这次的结果作废
     state.target = result.target;
     showText(result.text);
     showDetected(result.detectedSource);
@@ -224,6 +237,7 @@ async function runTranslate() {
     // 这次是联网译成的 → 现在正是提醒「可以顺手备一份离线包」的时机
     if (result.provider !== '系统翻译') void maybeHintOffline();
   } catch (err) {
+    if (mine !== state.generation) return; // 过期请求的报错也不该弹出来
     const message = errorText(err);
     if (message.includes(NEEDS_PACK)) {
       showOfflineDeadEnd();
@@ -231,7 +245,7 @@ async function runTranslate() {
       showError(message);
     }
   } finally {
-    setBusy(false);
+    if (mine === state.generation) setBusy(false);
   }
 }
 

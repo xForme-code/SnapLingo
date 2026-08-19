@@ -59,9 +59,9 @@ pub struct Language {
 }
 
 #[tauri::command]
-pub fn get_meta() -> Meta {
+pub fn get_meta(app: AppHandle) -> Meta {
     Meta {
-        providers: translate::list_providers(),
+        providers: translate::list_providers(&app),
         languages: config::target_languages()
             .into_iter()
             .map(|(code, label)| Language {

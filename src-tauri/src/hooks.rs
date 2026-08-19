@@ -4,7 +4,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// 划词监听可以被临时挂起（截图取词期间、我们自己的窗口获得焦点时）
+/// 划词监听可以被临时挂起（截图翻译期间、我们自己的窗口获得焦点时）
 static SUSPENDED: AtomicBool = AtomicBool::new(false);
 
 pub fn suspend(value: bool) {

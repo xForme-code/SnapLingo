@@ -298,9 +298,22 @@ async fn download_inner(app: &AppHandle, spec: &'static Spec, archive_path: &Pat
 ///
 /// 包内所有文件都在一个顶层目录下（translate-en_zh-1_9/），要剥掉这层，
 /// 否则路径里会多一级还带着版本号，换版本就对不上了。
+/// 解压上限，防 zip 炸弹。
+///
+/// 模型包是从固定 HTTPS 源下载的，但「源可信」不等于「内容一定合规」——
+/// 一个几十 MB 的包可以解出上百 GB，把用户磁盘撑爆。已知最大的模型包
+/// 解压后约 200 MB，给到 1 GB 已经很宽松了。
+const MAX_ENTRIES: usize = 512;
+const MAX_TOTAL_BYTES: u64 = 1_024 * 1_024 * 1_024;
+
 fn extract(archive_path: &Path, target: &Path) -> Result<()> {
     let file = std::fs::File::open(archive_path).map_err(|e| anyhow!("打开压缩包失败: {e}"))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| anyhow!("压缩包无法解析: {e}"))?;
+
+    if zip.len() > MAX_ENTRIES {
+        return Err(anyhow!("压缩包条目过多（{} 个），拒绝解压", zip.len()));
+    }
+    let mut written: u64 = 0;
 
     if target.exists() {
         std::fs::remove_dir_all(target).ok();
@@ -334,6 +347,11 @@ fn extract(archive_path: &Path, target: &Path) -> Result<()> {
         }
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| anyhow!("创建目录失败: {e}"))?;
+        }
+
+        written = written.saturating_add(entry.size());
+        if written > MAX_TOTAL_BYTES {
+            return Err(anyhow!("解压后体积超过 {} MB，拒绝继续", MAX_TOTAL_BYTES / 1_048_576));
         }
 
         let mut out = std::fs::File::create(&out_path).map_err(|e| anyhow!("写入 {} 失败: {e}", relative.display()))?;

@@ -11,44 +11,71 @@ pub mod youdao;
 use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::config;
 
-/// 云端引擎的时间预算。
+/// 云端引擎的时间预算，按引擎类型分开。
 ///
-/// 断网时连接会一直悬着直到 TCP 超时，划词场景等不起。给一个短预算，
-/// 超了就当云端不可用、立刻回落本地——用户宁可拿到本地译文，
-/// 也不想对着转圈等十几秒。
-const CLOUD_BUDGET: Duration = Duration::from_secs(4);
+/// 传统翻译 API（Google/有道/百度/DeepL）通常几百毫秒返回，4 秒足够；
+/// 但 LLM 要生成 token，2~8 秒是常态——拿 4 秒去卡它，等于每次都判超时、
+/// 回落本地、还进冷却，配了 Claude / OpenAI 也基本用不上。
+fn budget_for(provider: &str) -> Duration {
+    match provider {
+        "claude" | "openai" => Duration::from_secs(20),
+        _ => Duration::from_secs(4),
+    }
+}
 
 /// 云端失败后的冷却期。
 ///
-/// 断网时每次划词都去试一遍云端，等于每次都白等 4 秒。记住上次失败，
+/// 断网时每次划词都去试一遍云端，等于每次都白等。记住上次失败，
 /// 冷却期内直接走本地，用户体验才是「离线也顺手」。
 const CLOUD_COOLDOWN: Duration = Duration::from_secs(60);
 
-static CLOUD_DOWN_UNTIL: Lazy<Mutex<Option<Instant>>> = Lazy::new(|| Mutex::new(None));
+/// 冷却状态**按引擎分开记**。
+///
+/// 共享一个全局冷却会串味：Google 挂了之后切到有道，有道也被跳过 60 秒，
+/// 用户会以为「换了引擎还是不行」。各记各的才对得上因果。
+static CLOUD_DOWN_UNTIL: Lazy<Mutex<HashMap<String, Instant>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
-fn cloud_in_cooldown() -> bool {
+fn cloud_in_cooldown(provider: &str) -> bool {
     CLOUD_DOWN_UNTIL
         .lock()
         .ok()
-        .and_then(|slot| *slot)
+        .and_then(|map| map.get(provider).copied())
         .is_some_and(|until| Instant::now() < until)
 }
 
-fn note_cloud_down() {
-    if let Ok(mut slot) = CLOUD_DOWN_UNTIL.lock() {
-        *slot = Some(Instant::now() + CLOUD_COOLDOWN);
+fn note_cloud_down(provider: &str) {
+    if let Ok(mut map) = CLOUD_DOWN_UNTIL.lock() {
+        map.insert(provider.to_string(), Instant::now() + CLOUD_COOLDOWN);
     }
 }
 
-fn note_cloud_ok() {
-    if let Ok(mut slot) = CLOUD_DOWN_UNTIL.lock() {
-        *slot = None;
+fn note_cloud_ok(provider: &str) {
+    if let Ok(mut map) = CLOUD_DOWN_UNTIL.lock() {
+        map.remove(provider);
     }
+}
+
+/// 这个错误是「网络不通」还是「配置不对」？
+///
+/// 只有网络类问题才该进冷却并静默回落。Key 填错、额度用尽这类配置问题
+/// 必须原样告诉用户——否则他看到的是「已回落本地」，永远不知道自己的 Key 有问题。
+fn is_transient(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    let config_problem = [
+        "未配置", "API Key", "密钥", "401", "403", "invalid", "Invalid",
+        "unauthorized", "Unauthorized", "not authorized", "余额", "额度",
+        "错误码", "不支持",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker));
+    !config_problem
 }
 
 /// 全局共用一个 HTTP client，复用连接、统一超时
@@ -88,16 +115,17 @@ pub struct ProviderInfo {
     pub note: &'static str,
 }
 
-pub fn list_providers() -> Vec<ProviderInfo> {
+pub fn list_providers(app: &tauri::AppHandle) -> Vec<ProviderInfo> {
     let cfg = config::get();
     vec![
         ProviderInfo {
             id: "system",
             label: "系统翻译（离线）",
             needs_key: false,
-            // macOS 15+ 才有；低版本上 sidecar 编译时就被跳过了，
-            // 真正调用时会失败并回落到其它引擎
-            available: cfg!(target_os = "macos"),
+            // 不能只看系统是不是 macOS：翻译 helper 需要 macOS 15+，
+            // 低版本构建时会被跳过。这里查它是否真的在，否则用户会选到一个
+            // 必然失败的引擎（而且显式选离线引擎时不会回落云端）。
+            available: system::sidecar_available(app),
             note: "系统内置，完全离线、免费、不受网络环境影响。首次使用需下载语言包。",
         },
         ProviderInfo {
@@ -179,6 +207,17 @@ pub async fn translate(
         return Err(anyhow!("没有可翻译的内容"));
     }
 
+    // 长度上限要卡在**统一入口**，不能只卡在鼠标划选那条链上。
+    // 快捷键翻译、截图翻译、收集夹批量翻译走的都是这里——不卡的话，
+    // 一次误选整篇文档就会变成一次昂贵且漫长的请求。
+    let length = raw.chars().count();
+    if length > cfg.max_length {
+        return Err(anyhow!(
+            "选中内容太长（{length} 字，上限 {}）。可在设置里调整上限。",
+            cfg.max_length
+        ));
+    }
+
     let prepared = if cfg.split_identifiers {
         crate::selection::split_identifiers(raw)
     } else {
@@ -200,27 +239,33 @@ pub async fn translate(
 
     // 否则走「联网优先、断网回落」：
     // 云端质量更好，能用就用；连不上就自动切本地，用户不需要知道发生了什么。
-    if cloud_in_cooldown() {
-        log::debug!("云端处于冷却期，直接走本地翻译");
+    let budget = budget_for(&provider_id);
+    if cloud_in_cooldown(&provider_id) {
+        log::debug!("{provider_id} 处于冷却期，直接走本地翻译");
     } else {
         match tokio::time::timeout(
-            CLOUD_BUDGET,
+            budget,
             dispatch(app, &provider_id, &prepared, &source_lang, &target_lang),
         )
         .await
         {
             Ok(Ok(translation)) => {
-                note_cloud_ok();
+                note_cloud_ok(&provider_id);
                 return Ok(translation);
             }
-            // 引擎自己报错（限流、Key 失效、返回结构变了）同样说明这条路当下不通
             Ok(Err(err)) => {
+                // 配置问题（Key 没填、Key 无效、额度用尽）不该被当成网络故障：
+                // 静默回落会让用户永远查不出自己的 Key 有问题。原样抛给他。
+                if !is_transient(&err) {
+                    log::warn!("云端引擎 {provider_id} 配置有误，直接报给用户: {err}");
+                    return Err(err);
+                }
                 log::warn!("云端引擎 {provider_id} 失败，回落本地: {err}");
-                note_cloud_down();
+                note_cloud_down(&provider_id);
             }
             Err(_) => {
-                log::warn!("云端引擎 {provider_id} 超过 {CLOUD_BUDGET:?} 未返回，回落本地");
-                note_cloud_down();
+                log::warn!("云端引擎 {provider_id} 超过 {budget:?} 未返回，回落本地");
+                note_cloud_down(&provider_id);
             }
         }
     }
@@ -398,5 +443,38 @@ pub fn language_name(code: &str) -> &'static str {
         "pt" => "Portuguese",
         "it" => "Italian",
         _ => "English",
+    }
+}
+
+#[cfg(test)]
+mod cooldown_tests {
+    use super::*;
+
+    #[test]
+    fn llm_gets_a_longer_budget_than_plain_apis() {
+        // LLM 要生成 token，几秒是常态；拿传统 API 的预算去卡它会每次都超时
+        assert!(budget_for("claude") > budget_for("google"));
+        assert!(budget_for("openai") > budget_for("youdao"));
+        assert_eq!(budget_for("google"), budget_for("baidu"));
+    }
+
+    #[test]
+    fn cooldown_is_per_provider() {
+        note_cloud_down("google");
+        assert!(cloud_in_cooldown("google"));
+        // 一个引擎挂掉不该连累另一个
+        assert!(!cloud_in_cooldown("youdao"));
+        note_cloud_ok("google");
+        assert!(!cloud_in_cooldown("google"));
+    }
+
+    #[test]
+    fn config_errors_are_not_treated_as_network_failures() {
+        assert!(!is_transient(&anyhow!("未配置 Claude API Key，请到设置里填写。")));
+        assert!(!is_transient(&anyhow!("百度翻译失败（错误码 52003）：Unauthorized")));
+        assert!(!is_transient(&anyhow!("Google 翻译失败：HTTP 403")));
+        // 网络类问题才该静默回落并进冷却
+        assert!(is_transient(&anyhow!("error sending request for url")));
+        assert!(is_transient(&anyhow!("下载中断: connection reset")));
     }
 }

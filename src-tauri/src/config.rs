@@ -25,7 +25,7 @@ impl Default for TriggerMode {
 #[serde(rename_all = "camelCase")]
 pub struct Hotkeys {
     pub translate: String,
-    /// 截图取词：框选 → OCR → 翻译
+    /// 截图翻译：框选 → OCR → 翻译
     pub ocr: String,
     /// 截图提取：框选 → OCR → 抠出文字/号码/链接，不翻译
     #[serde(default = "default_extract_hotkey")]
@@ -211,13 +211,39 @@ pub fn get() -> Config {
     CONFIG.read().expect("config lock poisoned").clone()
 }
 
+/// 原子写文件：先写同目录的临时文件，fsync 落盘，再 rename 覆盖。
+///
+/// 直接 write 覆盖的问题是中途崩溃/磁盘满会留下**截断的 JSON**——配置还能回落
+/// 默认值，收集夹里的内容就真没了。rename 在同一文件系统内是原子的，
+/// 要么是完整的旧文件，要么是完整的新文件，不存在中间状态。
+pub fn write_atomic(path: &std::path::Path, contents: &str) -> anyhow::Result<()> {
+    use std::io::Write;
+
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
+
+    // 临时文件必须和目标在同一目录：跨文件系统的 rename 不是原子的，
+    // 放 /tmp 再 rename 到用户目录就失去了这个保证。
+    let temp = path.with_extension("tmp");
+    {
+        let mut file = std::fs::File::create(&temp)?;
+        file.write_all(contents.as_bytes())?;
+        file.flush()?;
+        // 光 flush 只把数据交给系统缓冲，断电仍可能丢；sync_all 才落到盘上
+        file.sync_all()?;
+    }
+    std::fs::rename(&temp, path)?;
+    Ok(())
+}
+
 pub fn save(next: Config) -> anyhow::Result<Config> {
+    // 先落盘再更新内存：写失败时内存状态不该已经变了，
+    // 否则界面显示的是新值、重启后又变回旧值，对不上。
+    write_atomic(&config_path(), &serde_json::to_string_pretty(&next)?)?;
     {
         let mut guard = CONFIG.write().expect("config lock poisoned");
         *guard = next.clone();
     }
-    std::fs::create_dir_all(config_dir())?;
-    std::fs::write(config_path(), serde_json::to_string_pretty(&next)?)?;
     Ok(next)
 }
 

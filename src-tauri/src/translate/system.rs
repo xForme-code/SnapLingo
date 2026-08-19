@@ -220,6 +220,33 @@ pub fn translate_blocking(
     Err(anyhow!("当前系统没有内置翻译能力"))
 }
 
+/// sidecar 是否真的存在且可用。
+///
+/// 只判断 `cfg!(target_os = "macos")` 是不够的：翻译 helper 需要 macOS 15+，
+/// 构建脚本在更低版本上会跳过生成它。那种情况下系统翻译在列表里显示为可用，
+/// 用户选了却直接报错，而且明确选择离线引擎时不会回落云端。
+pub fn sidecar_available(app: &tauri::AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        let by_resource = app
+            .path()
+            .resolve("snaplingo-translate", tauri::path::BaseDirectory::Resource)
+            .ok()
+            .is_some_and(|p| p.exists());
+        let by_exe = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("snaplingo-translate")))
+            .is_some_and(|p| p.exists());
+        by_resource || by_exe
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        false
+    }
+}
+
 /// 前端靠这个标记识别「需要下载语言包」，从而显示下载引导而不是普通报错
 pub const NEEDS_DOWNLOAD: &str = "NEEDS_LANGUAGE_PACK";
 

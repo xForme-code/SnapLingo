@@ -29,7 +29,7 @@ function render() {
   listEl.innerHTML = items
     .map((item, index) => {
       const time = new Date(item.createdAt).toLocaleString();
-      const kind = item.source === 'ocr' ? '截图取词' : '划词';
+      const kind = item.source === 'ocr' ? '截图翻译' : '划词';
       const translation = item.translation
         ? `<div class="item-translation">${escapeHtml(item.translation)}</div>`
         : '';

@@ -49,7 +49,7 @@ async fn select_region_platform() -> Result<Option<PathBuf>> {
 async fn select_region_platform() -> Result<Option<PathBuf>> {
     // Windows / Linux 走自绘遮罩：前端把框选结果回传后调用 capture_region
     Err(anyhow!(
-        "当前平台的截图取词尚未接线，请先在 macOS 上使用。"
+        "当前平台的截图翻译尚未接线，请先在 macOS 上使用。"
     ))
 }
 
