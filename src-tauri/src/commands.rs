@@ -109,6 +109,40 @@ pub async fn translate_text(
         .map_err(to_message)
 }
 
+/// 翻译选中的文字，然后**原地替换掉它**。
+///
+/// 和 translate_text 的区别不只是多一步写回：这个命令会改用户的文档，
+/// 所以整条链路（翻译 → 剪贴板 → 切回原程序 → 粘贴 → 还原剪贴板）都放在
+/// Rust 这一侧一次做完，中间不回前端——少一次往返，就少一次焦点被打断的机会。
+#[tauri::command]
+pub async fn replace_selection(
+    app: AppHandle,
+    text: String,
+    source: Option<String>,
+    target: Option<String>,
+    provider: Option<String>,
+) -> Result<String, String> {
+    let translation = translate::translate(
+        &app,
+        &text,
+        source.as_deref(),
+        target.as_deref(),
+        provider.as_deref(),
+    )
+    .await
+    .map_err(to_message)?;
+
+    let translated = translation.text.clone();
+
+    // 写回要模拟按键和睡眠等待，是阻塞操作，不能占着异步运行时的工作线程
+    tokio::task::spawn_blocking(move || crate::replace::write_back(&translated))
+        .await
+        .map_err(to_message)?
+        .map_err(to_message)?;
+
+    Ok(translation.text)
+}
+
 /// 查询离线语言包状态：installed / needs-download / unsupported / unavailable
 #[tauri::command]
 pub async fn language_pack_status(

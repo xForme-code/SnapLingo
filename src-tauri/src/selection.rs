@@ -36,7 +36,7 @@ pub enum CaptureMode {
 }
 
 #[derive(Debug, Clone)]
-enum Snapshot {
+pub(crate) enum Snapshot {
     Text(String),
     Image {
         width: usize,
@@ -46,7 +46,7 @@ enum Snapshot {
     Empty,
 }
 
-fn snapshot(clipboard: &mut Clipboard) -> Snapshot {
+pub(crate) fn snapshot(clipboard: &mut Clipboard) -> Snapshot {
     if let Ok(text) = clipboard.get_text() {
         if !text.is_empty() {
             return Snapshot::Text(text);
@@ -62,7 +62,7 @@ fn snapshot(clipboard: &mut Clipboard) -> Snapshot {
     Snapshot::Empty
 }
 
-fn restore(clipboard: &mut Clipboard, snap: Snapshot) {
+pub(crate) fn restore(clipboard: &mut Clipboard, snap: Snapshot) {
     let result = match snap {
         Snapshot::Text(text) => clipboard.set_text(text),
         Snapshot::Image {
@@ -96,6 +96,7 @@ mod mac {
     type CFTypeRef = *mut c_void;
 
     const KEY_C: u16 = 8; // kVK_ANSI_C
+    const KEY_V: u16 = 9; // kVK_ANSI_V
     const KEY_COMMAND: u16 = 55; // kVK_Command
     const FLAG_COMMAND: u64 = 0x0010_0000; // kCGEventFlagMaskCommand
     const HID_EVENT_TAP: u32 = 0; // kCGHIDEventTap
@@ -126,6 +127,15 @@ mod mac {
     }
 
     pub fn send_command_c() -> Result<(), String> {
+        send_command_key(KEY_C)
+    }
+
+    /// 模拟 ⌘V。写回替换用——键码之外的一切和 ⌘C 完全一样。
+    pub fn send_command_v() -> Result<(), String> {
+        send_command_key(KEY_V)
+    }
+
+    fn send_command_key(key: u16) -> Result<(), String> {
         unsafe {
             let source = Owned(CGEventSourceCreate(SOURCE_HID_SYSTEM_STATE));
             // source 为空也能继续（系统会用默认源），不算致命错误
@@ -136,8 +146,8 @@ mod mac {
             // App（Electron、Java、虚拟机等）看不到修饰键的按下过程，
             // 会把它当成一个普通的 c 而不触发复制。
             let cmd_down = Owned(CGEventCreateKeyboardEvent(source.0, KEY_COMMAND, true));
-            let c_down = Owned(CGEventCreateKeyboardEvent(source.0, KEY_C, true));
-            let c_up = Owned(CGEventCreateKeyboardEvent(source.0, KEY_C, false));
+            let c_down = Owned(CGEventCreateKeyboardEvent(source.0, key, true));
+            let c_up = Owned(CGEventCreateKeyboardEvent(source.0, key, false));
             let cmd_up = Owned(CGEventCreateKeyboardEvent(source.0, KEY_COMMAND, false));
             if cmd_down.0.is_null() || c_down.0.is_null() || c_up.0.is_null() || cmd_up.0.is_null()
             {
@@ -165,8 +175,12 @@ mod mac {
 /// 非 macOS 平台仍走 enigo，用物理键码绕开键盘布局反查
 #[cfg(target_os = "windows")]
 const COPY_KEY: Key = Key::Other(0x43); // VK_C
+#[cfg(target_os = "windows")]
+const PASTE_KEY: Key = Key::Other(0x56); // VK_V
 #[cfg(target_os = "linux")]
 const COPY_KEY: Key = Key::Other(54); // X11 keycode for 'c'
+#[cfg(target_os = "linux")]
+const PASTE_KEY: Key = Key::Other(55); // X11 keycode for 'v'
 
 #[cfg(target_os = "macos")]
 fn send_copy() -> Result<()> {
@@ -175,6 +189,12 @@ fn send_copy() -> Result<()> {
 
 #[cfg(not(target_os = "macos"))]
 fn send_copy() -> Result<()> {
+    send_with_ctrl(COPY_KEY)
+}
+
+/// 模拟 Ctrl+<键>。复制和粘贴只差一个键码，其余讲究完全一样。
+#[cfg(not(target_os = "macos"))]
+fn send_with_ctrl(key: Key) -> Result<()> {
     let mut enigo = Enigo::new(&Settings::default())
         .map_err(|e| anyhow!("初始化输入模拟失败: {e}"))?;
 
@@ -182,16 +202,27 @@ fn send_copy() -> Result<()> {
         .key(Key::Control, Direction::Press)
         .map_err(|e| anyhow!("按下修饰键失败: {e}"))?;
 
-    // 修饰键按下后给系统一点时间登记，否则 C 可能被当成普通字符输入
+    // 修饰键按下后给系统一点时间登记，否则字母键会被当成普通字符输入
     thread::sleep(Duration::from_millis(20));
 
-    let click = enigo.key(COPY_KEY, Direction::Click);
-    // 无论复制是否成功，修饰键都必须松开，否则会卡住用户的键盘
+    let click = enigo.key(key, Direction::Click);
+    // 无论成没成，修饰键都必须松开，否则会卡住用户的键盘
     let release = enigo.key(Key::Control, Direction::Release);
 
-    click.map_err(|e| anyhow!("发送 C 键失败: {e}"))?;
+    click.map_err(|e| anyhow!("发送按键失败: {e}"))?;
     release.map_err(|e| anyhow!("释放修饰键失败: {e}"))?;
     Ok(())
+}
+
+/// 模拟「粘贴」。写回替换用。
+#[cfg(target_os = "macos")]
+pub(crate) fn send_paste() -> Result<()> {
+    mac::send_command_v().map_err(|e| anyhow!("{e}（macOS 需要辅助功能权限）"))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn send_paste() -> Result<()> {
+    send_with_ctrl(PASTE_KEY)
 }
 
 /// 通过 Apple Events 发 ⌘C 的兜底通道。
@@ -256,6 +287,10 @@ pub fn capture_selected_text() -> Result<Option<String>> {
 }
 
 pub fn capture_with_mode(mode: CaptureMode) -> Result<Option<String>> {
+    // 必须在这里记：此刻气泡还没弹出来，焦点还在用户真正在用的那个程序上。
+    // 等用户点了气泡再问「谁是前台」，答案就变成 SnapLingo 自己了。
+    crate::frontmost::remember();
+
     let mut clipboard = Clipboard::new().map_err(|e| anyhow!("无法访问剪贴板: {e}"))?;
     let backup = snapshot(&mut clipboard);
 

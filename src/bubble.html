@@ -90,6 +90,67 @@
         background: var(--bg-sunken);
         color: var(--text);
       }
+
+      /* 选语言那一行默认收着。展开时窗口会跟着变高——高度由 JS 通知 Rust 改，
+         光把这里显示出来的话内容会被窗口边界切掉。 */
+      .picker {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 0 8px;
+        height: 34px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 3px 12px rgba(15, 20, 30, 0.18), 0 1px 3px rgba(15, 20, 30, 0.12);
+      }
+
+      .picker.open {
+        display: flex;
+      }
+
+      .detected {
+        font-size: 12px;
+        color: var(--text-faint);
+        white-space: nowrap;
+      }
+
+      .picker .to {
+        color: var(--text-faint);
+        flex-shrink: 0;
+      }
+
+      .picker select {
+        flex: 1;
+        min-width: 0;
+        height: 24px;
+        font: inherit;
+        font-size: 12px;
+        color: var(--text);
+        background: var(--bg-sunken);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0 4px;
+      }
+
+      .confirm {
+        flex-shrink: 0;
+        height: 24px;
+        padding: 0 10px;
+        font: inherit;
+        font-size: 12px;
+        color: #fff;
+        background: var(--accent);
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .confirm:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
     </style>
   </head>
   <body>
@@ -121,6 +182,14 @@
         收集
       </button>
 
+      <button class="act" id="convert" title="翻译并替换掉选中的文字">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 8h13l-3-3M20 16H7l3 3" />
+        </svg>
+        转换
+      </button>
+
       <div class="divider"></div>
 
       <button class="act close" id="close" title="关闭">
@@ -129,6 +198,16 @@
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
       </button>
+    </div>
+
+    <div class="picker" id="picker">
+      <span class="detected" id="detected">检测中…</span>
+      <svg class="to" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+      <select id="target"></select>
+      <button class="confirm" id="confirm">确定</button>
     </div>
     <script type="module" src="bubble.js"></script>
   </body>

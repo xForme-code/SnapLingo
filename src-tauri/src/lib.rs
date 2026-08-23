@@ -2,6 +2,7 @@ mod capture;
 mod collector;
 mod commands;
 mod config;
+mod frontmost;
 mod hooks;
 mod localmodel;
 mod logging;
@@ -11,6 +12,7 @@ mod permissions;
 // 否则在 macOS 上改坏了要等 CI 跑 Windows 那一档才发现。
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod region;
+mod replace;
 mod secrets;
 mod selection;
 mod translate;
@@ -67,6 +69,7 @@ pub fn run() {
             commands::translate_text,
             commands::capture_selection,
             commands::run_ocr,
+            commands::replace_selection,
             region::region_result,
             commands::copy_text,
             commands::collector_list,

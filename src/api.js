@@ -23,6 +23,15 @@ export const api = {
   captureSelection: () => invoke('capture_selection'),
   runOcr: () => invoke('run_ocr'),
 
+  // 翻译并**原地替换**选中的文字（会改用户的文档，只在明确点了确定时调）
+  replaceSelection: (text, source, target, provider) =>
+    invoke('replace_selection', {
+      text,
+      source: source ?? null,
+      target: target ?? null,
+      provider: provider ?? null,
+    }),
+
   // 截图框选遮罩回传结果（Windows / Linux；macOS 用系统的框选 UI）。
   // 传 null 表示用户取消。
   regionResult: (selection) => invoke('region_result', { selection: selection ?? null }),
