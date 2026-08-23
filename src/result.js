@@ -106,19 +106,31 @@ function showError(message) {
 /// Rust 端用这个标记表示「系统翻译要先下语言包」
 const NEEDS_PACK = 'NEEDS_LANGUAGE_PACK';
 
-/// 走到这一步说明云端连不上、本地又没有语言包。
+/// 云端没成、本地又没有这个语言的离线资源。
 ///
-/// 这时候**不能**给一个「下载语言包」按钮：下载本身要联网，而此刻恰恰没网，
-/// 点了只会失败。只能说清现状，并告诉他等有网了去哪里准备。
-function showOfflineDeadEnd() {
+/// **不要断言「你断网了」**。以前这里写死成「联网的翻译服务连不上，恢复网络后
+/// 即可正常翻译」，可真实原因常常是限流（HTTP 429）——网络好得很，等下去也不会
+/// 自己好。用户照着这句话去查网络和代理，只会离真相越来越远。
+///
+/// Rust 端已经把云端的真实失败原因带在错误里了（标记后面跟着「｜原因」），
+/// 这里原样转述，不再自己编。
+function showOfflineDeadEnd(message) {
+  const detail = message.includes('｜') ? message.split('｜').slice(1).join('｜') : '';
+  // 限流说明网络是通的，那「下载离线资源」这条路现在就能走；真断网时下载也会失败，
+  // 所以措辞上把两条路都摆出来，让用户自己看哪条可行
+  const rateLimited = /429/.test(detail);
+
   state.output = '';
   ui.output.className = '';
   ui.output.innerHTML = `
     <div class="notice">
       <div class="notice-title">现在无法翻译</div>
-      <p>联网的翻译服务连不上，本机的离线语言包也还没下载。</p>
-      <p class="notice-dim">恢复网络后即可正常翻译。如果希望以后断网也能用，
-         可以在联网时到设置里下载离线语言包（下载需要联网）。</p>
+      ${detail ? `<p>${escapeHtml(detail)}</p>` : '<p>云端没能返回结果，本机也没有这个语言方向的离线资源。</p>'}
+      <p class="notice-dim">${
+        rateLimited
+          ? '这是翻译服务的限流，通常稍等片刻即可恢复。想彻底避开它，可以在设置里配置另一个翻译引擎，或下载对应语言的离线资源。'
+          : '可以在设置里换一个翻译引擎；若希望断网也能用，联网时到设置里下载对应语言的离线资源。'
+      }</p>
       <button class="notice-btn" id="openSettings">打开设置</button>
     </div>`;
 
@@ -126,6 +138,7 @@ function showOfflineDeadEnd() {
     .getElementById('openSettings')
     .addEventListener('click', () => api.openWindow('settings'));
 }
+
 
 /// 联网翻译成功、但本机还没有离线语言包时，给一次性的温和提醒。
 ///
@@ -240,7 +253,7 @@ async function runTranslate() {
     if (mine !== state.generation) return; // 过期请求的报错也不该弹出来
     const message = errorText(err);
     if (message.includes(NEEDS_PACK)) {
-      showOfflineDeadEnd();
+      showOfflineDeadEnd(message);
     } else {
       showError(message);
     }
