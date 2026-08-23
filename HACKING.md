@@ -252,4 +252,5 @@ osascript -e 'tell application "System Events" to keystroke "c" using command do
 
 **没确认**：拖选取词在终端和 PDF 阅读器里能否成功。这是唯一的阻塞项。
 
-**没做**：Windows / Linux 的截图框选遮罩；这两个平台整体没在真机验证过。
+**没做**：Windows / Linux 整体没在真机验证过。代码路径成立、CI 三平台编译与
+单元测试通过，但没有一台真机跑过——所以 README 里不提这两个平台，等真跑通再写。

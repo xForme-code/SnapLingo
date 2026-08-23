@@ -2,9 +2,8 @@
 
 划词翻译 / 截图翻译 / 文字提取工具。
 
-**当前只发布 macOS 版本**（universal 二进制，Apple Silicon 与 Intel 通用；
-Intel 那一半只在 CI 上编译验证过，没有实机跑过）。Windows / Linux 的功能已经
-全部接通并能编译，但**没有在真机上验证过**，暂不提供构建产物。
+**macOS 应用**（universal 二进制，Apple Silicon 与 Intel 通用；Intel 那一半
+只在 CI 上编译验证过，没有实机跑过）。
 
 常驻菜单栏（系统托盘），不占 Dock。
 
@@ -62,7 +61,7 @@ macOS：下载 [Releases](../../releases) 里的 `.dmg`，拖进「应用程序�
 | 功能 | 触发方式 |
 |---|---|
 | 划词翻译 | 鼠标拖选任意文字 → 弹出图标条 → 点「翻译」 |
-| 快捷键翻译 | 选中文字后按 `⌥⇧T`（Win/Linux: `Alt+Shift+T`） |
+| 快捷键翻译 | 选中文字后按 `⌥⇧T` |
 | 截图翻译 | `⌥⇧A` 框选屏幕区域 → OCR 识别 → **翻译** |
 | 截图提取 | `⌥⇧E` 框选屏幕区域 → OCR 识别 → **原样抠出文字供复制**，不翻译 |
 | 多段收集 | `⌥⇧C` 逐条收集 → `⌥⇧D` 打开收集夹 → 批量翻译 / 合并复制 / 单条导出 Markdown 文件 |
@@ -125,15 +124,10 @@ macOS：下载 [Releases](../../releases) 里的 `.dmg`，拖进「应用程序�
 
 按键模拟用 [`enigo`](https://crates.io/crates/enigo)（三端原生），不依赖 xdotool 之类的外部命令。
 
-### OCR：一律用系统自带引擎
+### OCR：用系统自带引擎
 
-免费、离线、零模型下载、用完即退不常驻内存。
-
-| 平台 | 引擎 | 说明 |
-|---|---|---|
-| macOS | Apple Vision framework | 30 种语言，中文准确率极高，helper 二进制仅 104KB |
-| Windows | `Windows.Media.Ocr` | 系统自带，通过 PowerShell 调用 |
-| Linux | Tesseract | 系统无内置，需自行安装 |
+走 macOS 的 Apple Vision framework：支持 30 种语言，中文准确率极高，
+helper 二进制只有 104KB。免费、离线、零模型下载、用完即退不常驻内存。
 
 macOS 实测（中英混排测试图，识别耗时约 0.5s）：
 
@@ -173,8 +167,6 @@ Select text anywhere, translate instantly.
 
 ## 权限设置
 
-### macOS
-
 两个权限，都在 **系统设置 → 隐私与安全性**：
 
 | 权限 | 用途 | 何时需要 |
@@ -183,37 +175,6 @@ Select text anywhere, translate instantly.
 | 屏幕录制 | 截取屏幕区域做 OCR | 只有用截图翻译才需要 |
 
 授权后**必须重启本程序**才生效（macOS 的权限缓存机制所致）。
-
-### Windows / Linux（尚未发布，以下为规划）
-
-> 这两个平台**目前没有构建产物**，下面的内容是代码里已经写好的设计，
-> 但**没有在真机上验证过**。等有可用版本时会更新这一节。
-
-截图框选在这两个平台上是自绘的：铺一个盖满当前显示器的透明置顶窗口，
-用户拖框后把选区换算成全局物理坐标再截图（macOS 直接复用系统的
-`screencapture -i`，不走这条路）。Esc、右键、切走焦点都取消，
-60 秒没动作自动放弃——不然遮罩会一直吃掉全屏鼠标事件，像整台电脑卡住。
-
-**Windows**：不需要额外授权。OCR 走系统自带的 `Windows.Media.Ocr`，
-中文识别依赖系统语言包（设置 → 时间和语言 → 语言和区域 → 添加中文语言包）。
-
-**Linux**
-
-依赖：
-
-```bash
-# Ubuntu / Debian
-sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-                 librsvg2-dev patchelf libxdo-dev tesseract-ocr tesseract-ocr-chi-sim
-```
-
-⚠️ **Wayland 限制**：Ubuntu 22.04+ 的 GNOME 默认使用 Wayland，其安全模型**不允许程序监听全局鼠标事件**，因此「划词自动触发」无法工作，全局快捷键也可能失效。这是协议层面的限制，不是本程序的 bug（[pot-desktop 也有同样问题](https://github.com/pot-app/pot-desktop)）。
-
-解决办法任选其一：
-- 登录界面选择 **“Ubuntu on Xorg”** 会话
-- 安装 `ydotool` 并启动 `ydotoold` 服务
-
-程序检测到 Wayland 会主动提示。
 
 ---
 
@@ -231,8 +192,6 @@ npm run install:macos   # 构建 + 固定证书签名 + 装到 ~/Applications
 **cmake 是硬性前提**，缺了直接构建失败。首次编译 CTranslate2 约 1 分钟，之后走缓存。
 
 `sidecar` 是本机编译产物（带 target triple 后缀），不进版本库，拉下代码后需要自己生成。
-
-跨平台打包需要在对应系统上编译：macOS 上打不出 Windows 安装包。
 
 发布用的 `scripts/release-macos.sh` 默认出 universal 二进制（一个包同时给
 Apple Silicon 和 Intel）。只想要本机架构的话：
@@ -266,7 +225,6 @@ src-tauri/src/
   capture.rs           截图
   ocr.rs               各平台 OCR 分发
   secrets.rs           API Key 存取（macOS 走 Keychain）
-  region.rs            截图框选遮罩（Windows / Linux 自绘）
   collector.rs         收集夹存储
   localmodel.rs        离线模型下载与管理（断点续传）
   translate/           翻译引擎（system / opus / google / youdao / baidu / openai / deepl / claude / libre）
@@ -280,19 +238,15 @@ helpers/macos-ocr.swift   macOS Vision OCR helper
 
 ## 当前状态
 
-**已验证可用**
-- 四个翻译引擎的调用与解析（Google 已跑通真实请求）
-- macOS Vision OCR（实测中英混排全对）
-- 标识符拆词、OCR 文本清洗（单元测试覆盖）
-- 应用启动、托盘常驻、内存占用
+**已实机验证**
+- 划词取词、快捷键取词、截图翻译与截图提取
+- 9 个翻译引擎的调用与解析，以及联网时的自动选路
+- 离线翻译两层：macOS 系统翻译、OPUS-MT 按需下载
+- 收集夹、深色模式三态、自动更新
 
-**待你在真机上验证**（需要授权后才能测）
-- 划词自动触发、快捷键取词、截图框选
-
-**未在真机验证**
-- Windows / Linux 的全部功能。代码路径成立、CI 三平台编译与单元测试通过，
-  但没有在真机上跑过——尤其是取词（合成 `Ctrl+C`）、OCR（系统 API）、
-  以及截图框选遮罩在多显示器和非 100% 缩放下的表现。
+**只做过编译验证，没有实机跑过**
+- Intel Mac。产物是 universal 二进制，Intel 那一半只在 CI 上编译过；
+  macOS 的系统翻译引擎在 Intel 机器上大概率不可用，会自动回落到其它引擎。
 
 ---
 
@@ -300,6 +254,6 @@ helpers/macos-ocr.swift   macOS Vision OCR helper
 
 方案调研参考了以下开源项目，仅参考思路未使用其代码：
 
-- [pot-desktop](https://github.com/pot-app/pot-desktop)（GPL-3.0）— Tauri 选型、三端 OCR 引擎方案、Linux 依赖清单
+- [pot-desktop](https://github.com/pot-app/pot-desktop)（GPL-3.0）— Tauri 选型、系统 OCR 引擎方案
 - [STranslate](https://github.com/STranslate/STranslate) — 标识符分隔符预处理
 - [Easydict](https://github.com/tisfeng/Easydict) — 自动语言识别策略
