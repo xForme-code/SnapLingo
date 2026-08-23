@@ -106,7 +106,16 @@ pkill -f "$APP_NAME/Contents/MacOS/snaplingo" 2>/dev/null || true
 sleep 1
 mkdir -p ~/Applications
 rm -rf ~/Applications/"$APP_NAME"
-cp -R "$SRC" ~/Applications/
+# 用 ditto 不用 cp -R：后者不保留扩展属性，签名相关的元数据可能在复制中丢掉，
+# 表现成「源目录验得过、装完的打不开」
+ditto "$SRC" ~/Applications/"$APP_NAME"
+
+# 验的是**装完的那一份**。装之前验过的是源目录，复制本身也可能出问题，
+# 而用户双击的是这一份。
+codesign --verify --deep --strict ~/Applications/"$APP_NAME" || {
+  echo "[error] 安装后的签名校验没过，请把备份拖回去"
+  exit 1
+}
 
 echo ""
 echo "[done] 已安装 ~/Applications/$APP_NAME"
