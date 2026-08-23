@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>SnapLingo 截图</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        /* 遮罩铺满整块屏幕，用户不该能选中或拖动里面的任何东西 */
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: crosshair;
+      }
+
+      /* 变暗那一层。不做成整屏一块黑：选框内要露出原样的屏幕内容，
+         否则用户看不清自己框的是什么。 */
+      #dim {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+      }
+
+      /* 选框本身是完全透明的，靠一圈超大的 box-shadow 把外面压暗——
+         这样「洞」是真的洞，不需要用四块 div 去拼选框外的区域。 */
+      #sel {
+        position: fixed;
+        display: none;
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+        cursor: crosshair;
+      }
+
+      #size {
+        position: fixed;
+        display: none;
+        padding: 3px 7px;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: #fff;
+        background: rgba(20, 22, 28, 0.86);
+        border-radius: 4px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      #hint {
+        position: fixed;
+        left: 50%;
+        top: 24px;
+        transform: translateX(-50%);
+        padding: 7px 14px;
+        font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #fff;
+        background: rgba(20, 22, 28, 0.8);
+        border-radius: 8px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="dim"></div>
+    <div id="sel"></div>
+    <div id="size"></div>
+    <div id="hint">拖动鼠标框选要识别的区域 · Esc 取消</div>
+    <script type="module" src="region.js"></script>
+  </body>
+</html>

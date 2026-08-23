@@ -178,7 +178,7 @@ pub async fn capture_selection() -> Result<Option<String>, String> {
 pub async fn run_ocr(app: AppHandle) -> Result<Option<String>, String> {
     crate::hooks::suspend(true);
     let outcome = async {
-        let Some(path) = capture::select_region().await.map_err(to_message)? else {
+        let Some(path) = capture::select_region(&app).await.map_err(to_message)? else {
             return Ok(None); // 用户按 Esc 取消
         };
         let text = ocr::recognize(&app, &path).await.map_err(to_message);

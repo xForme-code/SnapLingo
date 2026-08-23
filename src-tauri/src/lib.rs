@@ -7,6 +7,10 @@ mod localmodel;
 mod logging;
 mod ocr;
 mod permissions;
+// macOS 用系统自带的框选 UI，这个模块在那儿没有调用点——但仍然让它参与编译，
+// 否则在 macOS 上改坏了要等 CI 跑 Windows 那一档才发现。
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+mod region;
 mod secrets;
 mod selection;
 mod translate;
@@ -63,6 +67,7 @@ pub fn run() {
             commands::translate_text,
             commands::capture_selection,
             commands::run_ocr,
+            region::region_result,
             commands::copy_text,
             commands::collector_list,
             commands::collector_add,
@@ -425,7 +430,7 @@ fn run_capture_flow(app: &AppHandle, translate: bool) {
     tauri::async_runtime::spawn(async move {
         hooks::suspend(true);
         let result = async {
-            let path = capture::select_region().await?;
+            let path = capture::select_region(&handle).await?;
             let Some(path) = path else {
                 return Ok::<Option<String>, anyhow::Error>(None);
             };

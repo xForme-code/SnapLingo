@@ -3,8 +3,8 @@
 划词翻译 / 截图翻译 / 文字提取工具。
 
 **当前只发布 macOS 版本**（universal 二进制，Apple Silicon 与 Intel 通用；
-Intel 那一半只在 CI 上编译验证过，没有实机跑过）。Windows / Linux 的代码路径
-已就位并能编译，但截图框选尚未接通、也没有在真机验证过，暂不提供构建产物。
+Intel 那一半只在 CI 上编译验证过，没有实机跑过）。Windows / Linux 的功能已经
+全部接通并能编译，但**没有在真机上验证过**，暂不提供构建产物。
 
 常驻菜单栏（系统托盘），不占 Dock。
 
@@ -189,6 +189,11 @@ Select text anywhere, translate instantly.
 > 这两个平台**目前没有构建产物**，下面的内容是代码里已经写好的设计，
 > 但**没有在真机上验证过**。等有可用版本时会更新这一节。
 
+截图框选在这两个平台上是自绘的：铺一个盖满当前显示器的透明置顶窗口，
+用户拖框后把选区换算成全局物理坐标再截图（macOS 直接复用系统的
+`screencapture -i`，不走这条路）。Esc、右键、切走焦点都取消，
+60 秒没动作自动放弃——不然遮罩会一直吃掉全屏鼠标事件，像整台电脑卡住。
+
 **Windows**：不需要额外授权。OCR 走系统自带的 `Windows.Media.Ocr`，
 中文识别依赖系统语言包（设置 → 时间和语言 → 语言和区域 → 添加中文语言包）。
 
@@ -261,6 +266,7 @@ src-tauri/src/
   capture.rs           截图
   ocr.rs               各平台 OCR 分发
   secrets.rs           API Key 存取（macOS 走 Keychain）
+  region.rs            截图框选遮罩（Windows / Linux 自绘）
   collector.rs         收集夹存储
   localmodel.rs        离线模型下载与管理（断点续传）
   translate/           翻译引擎（system / opus / google / youdao / baidu / openai / deepl / claude / libre）
@@ -283,8 +289,10 @@ helpers/macos-ocr.swift   macOS Vision OCR helper
 **待你在真机上验证**（需要授权后才能测）
 - 划词自动触发、快捷键取词、截图框选
 
-**尚未接线**
-- Windows / Linux 的截图框选遮罩（macOS 直接复用了系统自带的框选 UI）
+**未在真机验证**
+- Windows / Linux 的全部功能。代码路径成立、CI 三平台编译与单元测试通过，
+  但没有在真机上跑过——尤其是取词（合成 `Ctrl+C`）、OCR（系统 API）、
+  以及截图框选遮罩在多显示器和非 100% 缩放下的表现。
 
 ---
 

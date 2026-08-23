@@ -13,12 +13,12 @@ pub fn temp_image_path() -> PathBuf {
 
 /// 用户框选一块屏幕区域，返回截图文件路径。
 /// 用户按 Esc 取消时返回 Ok(None)。
-pub async fn select_region() -> Result<Option<PathBuf>> {
-    select_region_platform().await
+pub async fn select_region(app: &tauri::AppHandle) -> Result<Option<PathBuf>> {
+    select_region_platform(app).await
 }
 
 #[cfg(target_os = "macos")]
-async fn select_region_platform() -> Result<Option<PathBuf>> {
+async fn select_region_platform(_app: &tauri::AppHandle) -> Result<Option<PathBuf>> {
     use tokio::process::Command;
 
     // 直接复用 macOS 自带的框选 UI（和 ⌘⇧4 是同一个）：
@@ -46,16 +46,22 @@ async fn select_region_platform() -> Result<Option<PathBuf>> {
 }
 
 #[cfg(not(target_os = "macos"))]
-async fn select_region_platform() -> Result<Option<PathBuf>> {
-    // Windows / Linux 走自绘遮罩：前端把框选结果回传后调用 capture_region
-    Err(anyhow!(
-        "当前平台的截图翻译尚未接线，请先在 macOS 上使用。"
-    ))
+async fn select_region_platform(app: &tauri::AppHandle) -> Result<Option<PathBuf>> {
+    // 没有系统级的框选 UI，用自绘遮罩（region.rs）拿到区域再截
+    let Some(rect) = crate::region::pick(app).await? else {
+        return Ok(None);
+    };
+
+    // 截图是同步的位图搬运，别占着异步运行时的工作线程
+    tokio::task::spawn_blocking(move || capture_region(rect.x, rect.y, rect.width, rect.height))
+        .await
+        .map_err(|e| anyhow!("截图任务异常: {e}"))?
+        .map(Some)
 }
 
 /// 按全局物理坐标截取一块区域并存成 PNG。
-/// 供 Windows / Linux 的自绘遮罩回调使用。
-#[allow(dead_code)]
+/// 供 Windows / Linux 的自绘遮罩使用；macOS 走 screencapture，用不到。
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn capture_region(x: i32, y: i32, width: u32, height: u32) -> Result<PathBuf> {
     use xcap::Monitor;
 

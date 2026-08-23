@@ -156,7 +156,7 @@ fn place_near(
 }
 
 /// 已存在就复用，不存在才创建。窗口创建有开销，划词是高频操作。
-fn ensure(
+pub(crate) fn ensure(
     app: &AppHandle,
     label: &'static str,
     page: &str,
