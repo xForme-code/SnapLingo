@@ -60,13 +60,21 @@ bash scripts/build-ocr-helper.sh
 # 两个都无条件要求存在，少一个构建直接失败
 bash scripts/build-translate-helper.sh
 
+# 关掉自动更新包的产出。
+#
+# tauri.conf.json 里 createUpdaterArtifacts 是开着的（发布要用），于是每次构建
+# 末尾都会去给更新包签名，没有私钥就直接失败——而开发安装根本不需要更新包。
+# 不关的话，任何人 clone 下来跑 npm run install:macos 都会挂，
+# 除非他恰好有发布用的私钥。
+NO_UPDATER='{"bundle":{"createUpdaterArtifacts":false}}'
+
 # 变量名要用花括号界定：全角括号是多字节字符，紧贴 $VAR 时会被当成变量名的一部分
 echo "[build] 构建应用（${BUILD_MODE}）"
 if [[ "$BUILD_MODE" == "release" ]]; then
-  npx -y @tauri-apps/cli@^2 build --bundles app
+  npx -y @tauri-apps/cli@^2 build --bundles app --config "$NO_UPDATER"
   BUNDLE_DIR="src-tauri/target/release/bundle/macos"
 else
-  npx -y @tauri-apps/cli@^2 build --debug --bundles app
+  npx -y @tauri-apps/cli@^2 build --debug --bundles app --config "$NO_UPDATER"
   BUNDLE_DIR="src-tauri/target/debug/bundle/macos"
 fi
 
