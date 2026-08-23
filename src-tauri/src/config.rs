@@ -121,6 +121,14 @@ pub struct Config {
     pub baidu_secret: String,
 }
 
+/// LibreTranslate 的出厂地址。
+///
+/// 单独抽出来是因为「用户有没有改过它」是个有意义的判断：没改过就说明
+/// 他并没有真的在本机跑 LibreTranslate，自动选路不该把它当成可用引擎。
+pub fn default_libre_url() -> &'static str {
+    "http://localhost:5555"
+}
+
 fn default_openai_base() -> String {
     "https://api.openai.com/v1".into()
 }
@@ -155,7 +163,7 @@ impl Default for Config {
             deepl_pro: false,
             claude_api_key: String::new(),
             claude_model: "claude-opus-5".into(),
-            libre_url: "http://localhost:5555".into(),
+            libre_url: default_libre_url().into(),
             libre_api_key: String::new(),
             openai_api_key: String::new(),
             openai_base_url: default_openai_base(),

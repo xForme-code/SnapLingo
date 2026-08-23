@@ -35,6 +35,55 @@ fn budget_for(provider: &str) -> Duration {
 /// 冷却期内直接走本地，用户体验才是「离线也顺手」。
 const CLOUD_COOLDOWN: Duration = Duration::from_secs(60);
 
+/// 被限流时的冷却。比「连不上」短得多——限流是瞬时状态，用 60 秒去躲它，
+/// 等于把一次 429 放大成整整一分钟的不可用，代价比问题本身还大。
+const RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(10);
+
+/// 译文缓存。同一段文字、同一组语言、同一个引擎设置，结果不会变。
+///
+/// 存在的意义不只是快：免费的 Google 端点按 IP 限流，**请求数本身就是稀缺资源**。
+/// 用户反复翻同一段（划错了重划、面板关了重开、收集夹里再看一遍）在真实使用里
+/// 非常常见，每次都打一发网络请求是在自找 429。
+///
+/// 只缓存成功的结果——失败是瞬时状态（限流、超时、断网），缓存下来会把一次
+/// 偶发失败变成持续失败，那比不缓存糟得多。
+static TRANSLATION_CACHE: Lazy<Mutex<HashMap<CacheKey, Translation>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// 缓存上限。按条数卡而不是按字节：单条最长受 max_length 限制（默认 8000 字），
+/// 200 条最坏也就几 MB，而常驻内存的工具不该为缓存吃掉更多。
+const CACHE_LIMIT: usize = 200;
+
+/// 缓存键。引擎要算进去——换了引擎译文风格完全不同，用户换引擎正是为了看到
+/// 不一样的结果，这时候还给他上一个引擎的缓存等于换了个寂寞。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CacheKey {
+    text: String,
+    source: String,
+    target: String,
+    provider: String,
+}
+
+fn cache_get(key: &CacheKey) -> Option<Translation> {
+    TRANSLATION_CACHE.lock().ok()?.get(key).cloned()
+}
+
+fn cache_put(key: CacheKey, value: &Translation) {
+    let Ok(mut map) = TRANSLATION_CACHE.lock() else {
+        return;
+    };
+    // 满了就整个清空，不做 LRU。
+    //
+    // 看着粗暴，但这里的取舍很清楚：维护访问顺序要额外的数据结构和每次读的写锁，
+    // 而缓存命中与否只影响快慢、不影响正确性。为一个纯优化项引入更复杂的并发
+    // 结构不划算。
+    if map.len() >= CACHE_LIMIT {
+        log::debug!("译文缓存满（{CACHE_LIMIT} 条），清空重来");
+        map.clear();
+    }
+    map.insert(key, value.clone());
+}
+
 /// 冷却状态**按引擎分开记**。
 ///
 /// 共享一个全局冷却会串味：Google 挂了之后切到有道，有道也被跳过 60 秒，
@@ -79,7 +128,14 @@ fn configured_cloud_engines(cfg: &config::Config) -> Vec<&'static str> {
                     || cfg.openai_base_url.contains("localhost")
                     || cfg.openai_base_url.contains("127.0.0.1")
             }
-            "libre" => !cfg.libre_url.trim().is_empty(),
+            // 默认地址不算「已配置」：libre_url 出厂就是 localhost:5555，
+            // 按「非空」判断的话它永远在候选里，自动选路每次都去试一个
+            // 根本没跑起来的本地服务。真在本机跑了 LibreTranslate 的用户
+            // 可以直接把引擎选成它，那条路不受这里影响。
+            "libre" => {
+                let url = cfg.libre_url.trim();
+                !url.is_empty() && url != config::default_libre_url()
+            }
             _ => false,
         })
         .collect()
@@ -110,8 +166,27 @@ fn cloud_in_cooldown(provider: &str) -> bool {
 }
 
 fn note_cloud_down(provider: &str) {
+    note_cloud_down_for(provider, CLOUD_COOLDOWN);
+}
+
+/// 按失败原因决定躲多久。
+///
+/// 「连不上」多半要持续一段时间（断网、被墙、服务挂了），躲久一点省得白等；
+/// 「被限流」下一秒就可能恢复，躲太久纯属自伤。
+fn note_cloud_down_by(provider: &str, err: &anyhow::Error) {
+    let text = err.to_string();
+    let cooldown = if text.contains("429") {
+        log::debug!("{provider} 是被限流，用短冷却");
+        RATE_LIMIT_COOLDOWN
+    } else {
+        CLOUD_COOLDOWN
+    };
+    note_cloud_down_for(provider, cooldown);
+}
+
+fn note_cloud_down_for(provider: &str, cooldown: Duration) {
     if let Ok(mut map) = CLOUD_DOWN_UNTIL.lock() {
-        map.insert(provider.to_string(), Instant::now() + CLOUD_COOLDOWN);
+        map.insert(provider.to_string(), Instant::now() + cooldown);
     }
 }
 
@@ -298,9 +373,46 @@ pub async fn translate(
     };
     let provider_id = provider.unwrap_or(&cfg.provider).to_string();
 
+    // 命中缓存就直接返回，一发网络请求都不打。
+    //
+    // 键要用 prepared 而不是原始 text：标识符拆词的开关会改变实际送去翻译的内容，
+    // 用原文当键的话，改了这个开关还会拿到旧结果。
+    let cache_key = CacheKey {
+        text: prepared.clone(),
+        source: source_lang.clone(),
+        target: target_lang.clone(),
+        provider: provider_id.clone(),
+    };
+    if let Some(hit) = cache_get(&cache_key) {
+        log::debug!("译文缓存命中，跳过请求");
+        return Ok(hit);
+    }
+
+    let result = route(app, &cfg, &prepared, &source_lang, &target_lang, &provider_id).await;
+
+    // **只在唯一出口写缓存**。选路里有五六个 return Ok，逐个补写迟早漏掉一个，
+    // 而漏掉的那条路会表现成「这个引擎从来不走缓存」——没人会注意到。
+    if let Ok(ref translation) = result {
+        cache_put(cache_key, translation);
+    }
+    result
+}
+
+/// 挑一条路把这段文字翻出来。
+///
+/// 从 translate() 里拆出来，是为了让缓存只有一个写入点：这里面有好几个
+/// 成功返回的分支，散着写缓存必然漏。
+async fn route(
+    app: &tauri::AppHandle,
+    cfg: &config::Config,
+    prepared: &str,
+    source_lang: &str,
+    target_lang: &str,
+    provider_id: &str,
+) -> Result<Translation> {
     // 用户明确选了某个离线引擎：那就只用本地，没有回落云端的必要
     if provider_id == "system" || provider_id == "opus" {
-        return dispatch(app, &provider_id, &prepared, &source_lang, &target_lang).await;
+        return dispatch(app, provider_id, prepared, source_lang, target_lang).await;
     }
 
     // 自动选路：挨个试已配置的云端引擎，谁先成功就记住谁。
@@ -308,30 +420,30 @@ pub async fn translate(
     // 存在的意义：用户不该需要理解「我现在算国内网络还是国际网络」。
     // 墙内 Google 不通、墙外有道要绕远，与其让人自己判断，不如程序去试。
     if provider_id == "auto" {
-        return auto_route(app, &cfg, &prepared, &source_lang, &target_lang).await;
+        return auto_route(app, cfg, prepared, source_lang, target_lang).await;
     }
 
     // 否则走「联网优先、断网回落」：
     // 云端质量更好，能用就用；连不上就自动切本地，用户不需要知道发生了什么。
-    let budget = budget_for(&provider_id);
+    let budget = budget_for(provider_id);
     // 云端为什么没成——一路带到最后的错误信息里。
     //
     // 以前这里什么都不记，最终错误写死成「网络似乎不通」。可失败原因常常
     // 根本不是断网（限流 429、超时、冷却期），用户照着那句话去查网络和代理，
     // 只会越查越远。
     let cloud_reason: Option<String>;
-    if cloud_in_cooldown(&provider_id) {
+    if cloud_in_cooldown(provider_id) {
         log::debug!("{provider_id} 处于冷却期，直接走本地翻译");
         cloud_reason = Some(format!("{provider_id} 刚失败过，正在冷却，本次没有再试"));
     } else {
         match tokio::time::timeout(
             budget,
-            dispatch(app, &provider_id, &prepared, &source_lang, &target_lang),
+            dispatch(app, provider_id, prepared, source_lang, target_lang),
         )
         .await
         {
             Ok(Ok(translation)) => {
-                note_cloud_ok(&provider_id);
+                note_cloud_ok(provider_id);
                 return Ok(translation);
             }
             Ok(Err(err)) => {
@@ -342,18 +454,18 @@ pub async fn translate(
                     return Err(err);
                 }
                 log::warn!("云端引擎 {provider_id} 失败，回落本地: {err}");
-                note_cloud_down(&provider_id);
+                note_cloud_down_by(provider_id, &err);
                 cloud_reason = Some(err.to_string());
             }
             Err(_) => {
                 log::warn!("云端引擎 {provider_id} 超过 {budget:?} 未返回，回落本地");
-                note_cloud_down(&provider_id);
+                note_cloud_down(provider_id);
                 cloud_reason = Some(format!("{provider_id} 超过 {budget:?} 没有返回"));
             }
         }
     }
 
-    local_fallback(app, &prepared, &source_lang, &target_lang, cloud_reason).await
+    local_fallback(app, prepared, source_lang, target_lang, cloud_reason).await
 }
 
 /// 自动选路：按候选顺序试，第一个成功的就是这一轮的答案。
@@ -407,7 +519,7 @@ async fn auto_route(
                 // 配置错误不该让这个引擎被反复重试，但也不该中断整轮选路——
                 // 用户可能配了三个引擎，其中一个 Key 填错，剩下两个还能用
                 log::debug!("自动选路：{id} 不通（{err}）");
-                note_cloud_down(id);
+                note_cloud_down_by(id, &err);
             }
             Err(_) => {
                 log::debug!("自动选路：{id} 超时");
@@ -632,6 +744,24 @@ mod cooldown_tests {
     }
 
     #[test]
+    fn rate_limit_gets_a_shorter_cooldown_than_being_unreachable() {
+        // 429 是瞬时状态，用 60 秒去躲它等于把一次限流放大成一分钟不可用
+        assert!(RATE_LIMIT_COOLDOWN < CLOUD_COOLDOWN);
+
+        note_cloud_down_by("t-429", &anyhow!("Google 翻译失败：HTTP 429。"));
+        note_cloud_down_by("t-dead", &anyhow!("error sending request for url"));
+
+        let until = |id: &str| CLOUD_DOWN_UNTIL.lock().unwrap().get(id).copied().unwrap();
+        assert!(
+            until("t-429") < until("t-dead"),
+            "被限流的冷却必须比连不上的短"
+        );
+
+        note_cloud_ok("t-429");
+        note_cloud_ok("t-dead");
+    }
+
+    #[test]
     fn config_errors_are_not_treated_as_network_failures() {
         assert!(!is_transient(&anyhow!("未配置 Claude API Key，请到设置里填写。")));
         assert!(!is_transient(&anyhow!("百度翻译失败（错误码 52003）：Unauthorized")));
@@ -639,6 +769,57 @@ mod cooldown_tests {
         // 网络类问题才该静默回落并进冷却
         assert!(is_transient(&anyhow!("error sending request for url")));
         assert!(is_transient(&anyhow!("下载中断: connection reset")));
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn key(text: &str, source: &str, target: &str, provider: &str) -> CacheKey {
+        CacheKey {
+            text: text.into(),
+            source: source.into(),
+            target: target.into(),
+            provider: provider.into(),
+        }
+    }
+
+    fn sample(text: &str) -> Translation {
+        Translation {
+            text: text.into(),
+            provider: "测试".into(),
+            target: "en".into(),
+            detected_source: None,
+        }
+    }
+
+    /// 缓存键漏掉任何一个维度，都会表现成「改了设置还拿到旧结果」——
+    /// 而且用户多半不会怀疑到缓存头上，只会觉得这个设置项没生效。
+    #[test]
+    fn key_distinguishes_every_dimension() {
+        let base = key("hello", "auto", "zh-CN", "google");
+        cache_put(base.clone(), &sample("你好"));
+
+        assert_eq!(cache_get(&base).unwrap().text, "你好");
+        // 换目标语言
+        assert!(cache_get(&key("hello", "auto", "ja", "google")).is_none());
+        // 换源语言
+        assert!(cache_get(&key("hello", "en", "zh-CN", "google")).is_none());
+        // 换引擎——用户换引擎正是为了看到不一样的译文
+        assert!(cache_get(&key("hello", "auto", "zh-CN", "deepl")).is_none());
+        // 换原文
+        assert!(cache_get(&key("hallo", "auto", "zh-CN", "google")).is_none());
+    }
+
+    #[test]
+    fn cache_is_bounded() {
+        // 常驻后台的工具不能让缓存无限长。满了整个清空是有意的取舍：
+        // 命中与否只影响快慢，不值得为它引入 LRU 那套并发结构。
+        for i in 0..(CACHE_LIMIT + 5) {
+            cache_put(key(&format!("t{i}"), "auto", "en", "google"), &sample("x"));
+        }
+        assert!(TRANSLATION_CACHE.lock().unwrap().len() <= CACHE_LIMIT);
     }
 }
 
