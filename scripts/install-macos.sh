@@ -54,16 +54,19 @@ EOF
 
 # ---------------------------------------------------------------- 构建
 
-echo "[build] 编译 OCR helper"
+echo "[build] 编译 sidecar"
 bash scripts/build-ocr-helper.sh
+# 系统翻译 sidecar 是后加的，别漏——tauri.conf.json 的 externalBin
+# 两个都无条件要求存在，少一个构建直接失败
+bash scripts/build-translate-helper.sh
 
 # 变量名要用花括号界定：全角括号是多字节字符，紧贴 $VAR 时会被当成变量名的一部分
 echo "[build] 构建应用（${BUILD_MODE}）"
 if [[ "$BUILD_MODE" == "release" ]]; then
-  npx tauri build --bundles app
+  npx -y @tauri-apps/cli@^2 build --bundles app
   BUNDLE_DIR="src-tauri/target/release/bundle/macos"
 else
-  npx tauri build --debug --bundles app
+  npx -y @tauri-apps/cli@^2 build --debug --bundles app
   BUNDLE_DIR="src-tauri/target/debug/bundle/macos"
 fi
 
@@ -80,9 +83,21 @@ if ! security find-identity -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; t
 fi
 
 echo "[sign] 使用身份: $IDENTITY"
-# 先签内部的 sidecar，再签外层 bundle，顺序不能反
-codesign --force --timestamp=none -s "$IDENTITY" "$SRC/Contents/MacOS/snaplingo-ocr"
+# 先签内部的 sidecar，再签外层 bundle，顺序不能反。
+# **每个嵌进去的可执行文件都要签**：签 bundle 不会自动签它里面的 Mach-O，
+# 漏掉一个，整个 bundle 的签名校验就过不了（表现是应用打不开）。
+for helper in "$SRC/Contents/MacOS/"snaplingo-*; do
+  [[ -f "$helper" ]] || continue
+  echo "[sign] $(basename "$helper")"
+  codesign --force --timestamp=none -s "$IDENTITY" "$helper"
+done
 codesign --force --timestamp=none -s "$IDENTITY" "$SRC"
+
+# 签完当场验一次：签名坏了的话，这里失败远比用户双击打不开好排查
+codesign --verify --deep --strict "$SRC" || {
+  echo "[error] 签名校验没过，不安装——装上去也是打不开"
+  exit 1
+}
 
 # ---------------------------------------------------------------- 安装
 
