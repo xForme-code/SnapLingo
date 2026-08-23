@@ -114,6 +114,15 @@
         font-size: 12px;
         color: var(--text-faint);
         white-space: nowrap;
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* 失败原因要一眼能看出是失败，不能和「检测到中文」长一个样 */
+      .detected.failed {
+        color: var(--danger);
+        cursor: help;
       }
 
       .picker .to {

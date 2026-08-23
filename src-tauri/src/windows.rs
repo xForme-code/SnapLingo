@@ -232,6 +232,38 @@ pub fn show_bubble(app: &AppHandle, payload: Payload, anchor: Option<(f64, f64)>
     Ok(())
 }
 
+/// 用户点到气泡以外的地方就把它收起来。
+///
+/// 光靠那 6 秒的自动隐藏不够：划完发现不需要翻译、想接着选下一段时，
+/// 悬在那儿的气泡正好挡在手边。
+///
+/// 坐标一律用逻辑点比较——传进来的 x/y 来自 enigo 查询的光标位置，
+/// 而窗口给的是物理像素，不换算的话在 Retina 屏上判定会整体偏一倍。
+pub fn dismiss_bubble_if_outside(app: &AppHandle, x: f64, y: f64) {
+    let Some(window) = app.get_webview_window(BUBBLE) else {
+        return;
+    };
+    if !window.is_visible().unwrap_or(false) {
+        return;
+    }
+
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+    let pos = pos.to_logical::<f64>(scale);
+    let size = size.to_logical::<f64>(scale);
+
+    let inside = x >= pos.x && x <= pos.x + size.width && y >= pos.y && y <= pos.y + size.height;
+    if inside {
+        // 点的就是气泡自己（按钮、选语言那一行），当然不能收
+        return;
+    }
+
+    log::debug!("点到气泡外 @({x:.0},{y:.0})，收起气泡");
+    let _ = window.hide();
+}
+
 /// 一闪即逝的操作确认提示。
 ///
 /// 收集这类操作做完之后界面上什么都不变，用户无从判断成没成——快捷键触发时

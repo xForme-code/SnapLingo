@@ -15,20 +15,25 @@ pub fn is_suspended() -> bool {
     SUSPENDED.load(Ordering::Relaxed)
 }
 
-/// 一次划选动作，带上抬起时的光标位置（逻辑点，来自系统查询）。
+/// 钩子投递给消费线程的事件。
 ///
-/// 必须记下手势发生那一刻的坐标：取词要花几百毫秒，等到气泡真正弹出时
-/// 鼠标往往已经移走了，用那时的位置会把气泡放到毫不相干的地方。
+/// 判断和窗口操作都放在消费线程做，钩子里只管投递——rdev 的回调是阻塞的，
+/// 在里面查窗口几何会拖慢整个系统的鼠标事件派发。
 #[derive(Debug, Clone, Copy)]
-pub struct SelectionGesture {
-    pub x: f64,
-    pub y: f64,
+pub enum HookEvent {
+    /// 一次划选动作，带上抬起时的光标位置（逻辑点，来自系统查询）。
+    ///
+    /// 必须记下手势发生那一刻的坐标：取词要花几百毫秒，等到气泡真正弹出时
+    /// 鼠标往往已经移走了，用那时的位置会把气泡放到毫不相干的地方。
+    Selection { x: f64, y: f64 },
+    /// 任意一次左键按下。用来判断「用户点到别处了，气泡该收起来」。
+    Press { x: f64, y: f64 },
 }
 
 /// 发送端常驻，接收端只取一次（交给消费线程），所以用 Option 包着。
 type GestureChannel = (
-    Mutex<Sender<SelectionGesture>>,
-    Mutex<Option<Receiver<SelectionGesture>>>,
+    Mutex<Sender<HookEvent>>,
+    Mutex<Option<Receiver<HookEvent>>>,
 );
 
 static CHANNEL: Lazy<GestureChannel> =
@@ -38,7 +43,7 @@ static CHANNEL: Lazy<GestureChannel> =
     });
 
 /// 取出接收端（只能取一次），交给消费线程
-pub fn take_receiver() -> Option<Receiver<SelectionGesture>> {
+pub fn take_receiver() -> Option<Receiver<HookEvent>> {
     CHANNEL.1.lock().ok()?.take()
 }
 
@@ -122,6 +127,11 @@ pub fn start_mouse_watcher() -> Result<(), String> {
                         state.press_time = Some(Instant::now());
                         state.moves_since_press = 0;
                         log::debug!("鼠标按下 @({:.0},{:.0})", at.0, at.1);
+                        // 点到别处就该收起气泡。不能等那 6 秒的自动隐藏——
+                        // 用户划完不想操作、想接着选下一段时，悬在那儿的气泡挡路。
+                        if let Ok(tx) = CHANNEL.0.lock() {
+                            let _ = tx.send(HookEvent::Press { x: at.0, y: at.1 });
+                        }
                     }
                     EventType::ButtonRelease(Button::Left) => {
                         let release_at = query_cursor().unwrap_or(state.cursor);
@@ -180,7 +190,7 @@ pub fn start_mouse_watcher() -> Result<(), String> {
                         );
 
                         if dragged || double_clicked {
-                            match sender.send(SelectionGesture {
+                            match sender.send(HookEvent::Selection {
                                 x: release_at.0,
                                 y: release_at.1,
                             }) {

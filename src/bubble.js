@@ -142,6 +142,8 @@ document.getElementById('convert').addEventListener('click', async () => {
   await loadLanguages();
 
   const cjk = looksCJK(text);
+  detected.classList.remove('failed');
+  detected.title = '';
   detected.textContent = cjk ? '检测到中文' : '检测到外文';
   // 默认往「另一边」译：中文选英文，其它选简体中文。绝大多数情况这就是想要的
   targetSelect.value = cjk ? 'en' : 'zh-CN';
@@ -151,6 +153,26 @@ document.getElementById('convert').addEventListener('click', async () => {
   // 展开后别再自动收起：用户正在挑语言，气泡突然消失比什么都恼人
   if (hideTimer) clearTimeout(hideTimer);
 });
+
+/// 把失败原因如实说给用户听。
+///
+/// 之前这里一律显示「替换失败」，把 Rust 辛苦带上来的原因全丢了——用户看到的
+/// 是一句什么也没说的话，只能自己瞎猜。实测就发生过：真实原因是「Google 限流
+/// + 本机没有日语离线资源」，用户看到「替换失败」，猜成「联网翻译为什么还要
+/// 语言包」，方向整个跑偏。
+function showFailure(message) {
+  // 气泡只有一行的位置，塞不下完整原因：短标签点题，完整的挂在 title 上
+  if (message.includes('NEEDS_LANGUAGE_PACK')) {
+    detected.textContent = '缺该语言的离线资源';
+  } else if (message.includes('IN_CLIPBOARD')) {
+    detected.textContent = '已复制，请手动粘贴';
+  } else {
+    // Rust 端的错误本来就是写给人看的中文，截一段直接显示，别再包一层
+    detected.textContent = message.slice(0, 18);
+  }
+  detected.classList.add('failed');
+  detected.title = message.replace('NEEDS_LANGUAGE_PACK｜', '').replace('IN_CLIPBOARD', '');
+}
 
 confirmBtn.addEventListener('click', async () => {
   const text = await ensureText();
@@ -162,13 +184,7 @@ confirmBtn.addEventListener('click', async () => {
     await api.replaceSelection(text, null, targetSelect.value, null);
     api.hideBubble();
   } catch (err) {
-    // 写回失败时 Rust 会保证译文已经在剪贴板里，如实告诉用户下一步能做什么，
-    // 而不是只说一句「失败了」
-    const message = errorText(err);
-    detected.textContent = message.startsWith('IN_CLIPBOARD')
-      ? '已复制，请手动粘贴'
-      : '替换失败';
-    detected.title = message.replace('IN_CLIPBOARD', '');
+    showFailure(errorText(err));
   } finally {
     confirmBtn.disabled = false;
     confirmBtn.textContent = '确定';

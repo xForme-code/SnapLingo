@@ -188,14 +188,28 @@ fn start_selection_pipeline(app: &AppHandle) {
         .name("snaplingo-selection".into())
         .spawn(move || {
             // 借用而不是消费 receiver：下面要在循环体内继续用它清空队列
-            for gesture in &receiver {
+            for event in &receiver {
+                // 按下事件只用来收气泡，处理完就继续等下一个。
+                // 放在消费线程做而不是钩子里：查窗口位置要和主线程往返，
+                // 钩子回调是阻塞的，在那儿等会拖慢整个系统的鼠标派发。
+                let mut gesture = match event {
+                    hooks::HookEvent::Press { x, y } => {
+                        windows::dismiss_bubble_if_outside(&handle, x, y);
+                        continue;
+                    }
+                    hooks::HookEvent::Selection { x, y } => (x, y),
+                };
+
                 // 取词期间新来的手势会在队列里堆积，逐个处理会让气泡越弹越晚。
                 // 只保留最后一次——用户关心的永远是刚划的那段。
-                let mut gesture = gesture;
                 let mut skipped = 0;
                 while let Ok(newer) = receiver.try_recv() {
-                    gesture = newer;
-                    skipped += 1;
+                    // 排队的按下事件在这里直接丢掉：等会儿要弹新气泡，
+                    // 把它收起来毫无意义，还会和新气泡打架
+                    if let hooks::HookEvent::Selection { x, y } = newer {
+                        gesture = (x, y);
+                        skipped += 1;
+                    }
                 }
                 if skipped > 0 {
                     log::debug!("丢弃 {skipped} 个过期手势，只处理最新一次");
@@ -234,7 +248,7 @@ fn start_selection_pipeline(app: &AppHandle) {
                     source: "selection".into(),
                     auto_translate: cfg.trigger_mode == TriggerMode::Auto,
                 };
-                let anchor = (gesture.x, gesture.y);
+                let anchor = gesture;
 
                 // 所有窗口操作必须回到主线程
                 let _ = handle.clone().run_on_main_thread(move || {

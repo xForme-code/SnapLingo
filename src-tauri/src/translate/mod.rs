@@ -314,8 +314,15 @@ pub async fn translate(
     // 否则走「联网优先、断网回落」：
     // 云端质量更好，能用就用；连不上就自动切本地，用户不需要知道发生了什么。
     let budget = budget_for(&provider_id);
+    // 云端为什么没成——一路带到最后的错误信息里。
+    //
+    // 以前这里什么都不记，最终错误写死成「网络似乎不通」。可失败原因常常
+    // 根本不是断网（限流 429、超时、冷却期），用户照着那句话去查网络和代理，
+    // 只会越查越远。
+    let cloud_reason: Option<String>;
     if cloud_in_cooldown(&provider_id) {
         log::debug!("{provider_id} 处于冷却期，直接走本地翻译");
+        cloud_reason = Some(format!("{provider_id} 刚失败过，正在冷却，本次没有再试"));
     } else {
         match tokio::time::timeout(
             budget,
@@ -336,15 +343,17 @@ pub async fn translate(
                 }
                 log::warn!("云端引擎 {provider_id} 失败，回落本地: {err}");
                 note_cloud_down(&provider_id);
+                cloud_reason = Some(err.to_string());
             }
             Err(_) => {
                 log::warn!("云端引擎 {provider_id} 超过 {budget:?} 未返回，回落本地");
                 note_cloud_down(&provider_id);
+                cloud_reason = Some(format!("{provider_id} 超过 {budget:?} 没有返回"));
             }
         }
     }
 
-    local_fallback(app, &prepared, &source_lang, &target_lang).await
+    local_fallback(app, &prepared, &source_lang, &target_lang, cloud_reason).await
 }
 
 /// 自动选路：按候选顺序试，第一个成功的就是这一轮的答案。
@@ -408,7 +417,14 @@ async fn auto_route(
     }
 
     log::info!("自动选路：所有云端引擎都不通，回落本地");
-    local_fallback(app, prepared, source_lang, target_lang).await
+    local_fallback(
+        app,
+        prepared,
+        source_lang,
+        target_lang,
+        Some("已配置的云端引擎都没能返回结果".into()),
+    )
+    .await
 }
 
 /// 本地两级回落：系统翻译 → OPUS-MT 离线模型。
@@ -420,6 +436,8 @@ async fn local_fallback(
     prepared: &str,
     source_lang: &str,
     target_lang: &str,
+    // 云端为什么没成。None 表示压根没试（用户直接选了离线引擎）。
+    cloud_reason: Option<String>,
 ) -> Result<Translation> {
     // 先问一句系统语言包装了没，没装就**不要**去调它。
     //
@@ -452,13 +470,20 @@ async fn local_fallback(
         }
     }
 
-    // 两条本地路都不成。优先透出「系统语言包没下载」——那是用户点一下就能解决的，
-    // 前端要靠这个标记显示下载引导。
+    // 两条本地路都不成。
+    let cloud_note = cloud_reason.unwrap_or_else(|| "没有试云端".into());
+
+    // 优先透出「本地缺语言资源」——那是用户自己能解决的，前端靠这个标记显示引导。
+    // 但**必须同时说清云端为什么没成**：只说「要下语言包」，用户会理所当然地想
+    // 「我明明联着网，为什么要下语言包」——他不知道云端已经先失败了一次。
     if system_err.to_string().contains(system::NEEDS_DOWNLOAD) {
-        return Err(system_err);
+        return Err(anyhow!(
+            "{}｜云端没成功：{cloud_note}；本机也没有这个语言方向的离线资源",
+            system::NEEDS_DOWNLOAD
+        ));
     }
     Err(anyhow!(
-        "云端和本地都不可用。云端：网络似乎不通；本地：{system_err}"
+        "翻译失败。云端：{cloud_note}；本地：{system_err}"
     ))
 }
 
