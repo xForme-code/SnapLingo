@@ -3,7 +3,9 @@
 划词翻译 / 截图翻译 / 文字提取工具。
 
 **macOS 应用**（universal 二进制，Apple Silicon 与 Intel 通用；Intel 那一半
-只在 CI 上编译验证过，没有实机跑过）。
+只在 CI 上编译验证过，没有实机跑过）。**Windows 和 Linux 版本开发中**——
+代码路径已经打通、CI 三平台编译与单元测试通过，但还没有在真机上验证过，
+暂不提供构建产物。
 
 常驻菜单栏（系统托盘），不占 Dock。
 
@@ -247,6 +249,10 @@ helpers/macos-ocr.swift   macOS Vision OCR helper
 **只做过编译验证，没有实机跑过**
 - Intel Mac。产物是 universal 二进制，Intel 那一半只在 CI 上编译过；
   macOS 的系统翻译引擎在 Intel 机器上大概率不可用，会自动回落到其它引擎。
+- **Windows / Linux（开发中）**。功能已经全部接通——取词走模拟复制、
+  OCR 用系统 API（Windows）或 tesseract（Linux）、截图框选是自绘的全屏遮罩。
+  CI 上三个平台都编译通过、单元测试也过，但**没有一台真机跑过**，
+  所以还不发布构建产物。真机验证完会补上。
 
 ---
 
