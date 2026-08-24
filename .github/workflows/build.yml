@@ -117,11 +117,18 @@ jobs:
       # OCR 靠系统 API、截图框选靠全屏遮罩，这些全都只有真机能验。
       # 没有安装包，验证就无从谈起，所以让 CI 产出一个供人下载试用。
       - name: 打包安装程序
-        # 关掉自动更新包的产出：tauri.conf.json 里它是开着的（发布要用），
-        # 而给更新包签名需要私钥，CI 上没有，不关的话构建会在最后一步失败。
-        run: >
-          npx -y @tauri-apps/cli@^2 build --bundles nsis
-          --config "{\"bundle\":{\"createUpdaterArtifacts\":false}}"
+        # 用 bash 而不是 Windows 默认的 pwsh，并且把配置覆盖**写成文件**再传路径。
+        #
+        # 内联 JSON 在这里行不通：PowerShell 不把反斜杠当转义字符，
+        # `--config "{\"bundle\":...}"` 会被原样拆成 `{\` 传给 tauri，
+        # 报 "failed to parse config as JSON"（踩过一次）。走文件就没有引号问题。
+        #
+        # 覆盖的内容是关掉自动更新包：tauri.conf.json 里它开着（发布要用），
+        # 而给更新包签名需要私钥，CI 上没有，不关的话构建最后一步会失败。
+        shell: bash
+        run: |
+          echo '{"bundle":{"createUpdaterArtifacts":false}}' > no-updater.json
+          npx -y @tauri-apps/cli@^2 build --bundles nsis --config no-updater.json
       - name: 上传安装程序
         uses: actions/upload-artifact@v4
         with:

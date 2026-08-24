@@ -22,3 +22,4 @@ node_modules/
 
 # 编辑器 / 助手的本机配置
 .claude/
+no-updater.json
