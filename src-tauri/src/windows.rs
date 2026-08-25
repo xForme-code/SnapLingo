@@ -234,12 +234,22 @@ pub fn show_bubble(app: &AppHandle, payload: Payload, anchor: Option<(f64, f64)>
 
 /// 用户点到气泡以外的地方就把它收起来。
 ///
-/// 光靠那 6 秒的自动隐藏不够：划完发现不需要翻译、想接着选下一段时，
+/// 光靠自动隐藏不够：划完发现不需要翻译、想接着选下一段时，
 /// 悬在那儿的气泡正好挡在手边。
+///
+/// 但「任何一次按下都收起」也有代价：macOS 截图要按下鼠标拖框，
+/// **那一下按下本身就会触发收起**，导致根本截不到气泡。所以收起方式做成可配：
+/// 单击收（默认）/ 双击才收（截图、录屏、演示用）/ 完全不响应点击。
 ///
 /// 坐标一律用逻辑点比较——传进来的 x/y 来自 enigo 查询的光标位置，
 /// 而窗口给的是物理像素，不换算的话在 Retina 屏上判定会整体偏一倍。
-pub fn dismiss_bubble_if_outside(app: &AppHandle, x: f64, y: f64) {
+pub fn dismiss_bubble_if_outside(app: &AppHandle, x: f64, y: f64, double: bool) {
+    match crate::config::get().bubble_dismiss.as_str() {
+        "timer" => return,
+        "double" if !double => return,
+        _ => {}
+    }
+
     let Some(window) = app.get_webview_window(BUBBLE) else {
         return;
     };

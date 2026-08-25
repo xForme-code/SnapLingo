@@ -17,9 +17,22 @@ async function pull() {
 api.on('bubble:pending', () => void pull());
 void pull();
 
-/// 图标条浮在内容上方会挡视线，一段时间没人理就自己收起
-function restartAutoHide(delay = 6000) {
+/// 停留几秒由设置决定，0 表示不自动收起。
+/// 读配置是异步的，气泡可能在读到之前就要开始计时，所以先用默认值兜着。
+let staySeconds = 6;
+
+void api.getConfig().then((cfg) => {
+  if (typeof cfg?.bubbleStaySecs === 'number') staySeconds = cfg.bubbleStaySecs;
+});
+void api.on('config:changed', (cfg) => {
+  if (typeof cfg?.bubbleStaySecs === 'number') staySeconds = cfg.bubbleStaySecs;
+});
+
+/// 图标条浮在内容上方会挡视线，一段时间没人理就自己收起。
+/// 设成 0 就一直留着——截图、录屏、演示时要的就是这个。
+function restartAutoHide(delay = staySeconds * 1000) {
   if (hideTimer) clearTimeout(hideTimer);
+  if (delay <= 0) return;
   hideTimer = setTimeout(() => api.hideBubble(), delay);
 }
 
@@ -27,7 +40,9 @@ function restartAutoHide(delay = 6000) {
 document.addEventListener('mouseenter', () => {
   if (hideTimer) clearTimeout(hideTimer);
 });
-document.addEventListener('mouseleave', () => restartAutoHide(1600));
+// 移开后短暂停留再收。同样尊重「不自动收起」的设置——
+// 否则设了不自动收起，鼠标一划过反而把它弄没了
+document.addEventListener('mouseleave', () => restartAutoHide(staySeconds > 0 ? 1600 : 0));
 
 /// 点完给一个「已完成」的视觉确认再收起，否则用户不确定到底生效没有
 function confirmThenClose(button, label) {

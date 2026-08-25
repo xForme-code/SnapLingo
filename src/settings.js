@@ -119,6 +119,7 @@ async function init() {
   bindCheckbox('deeplPro', 'deeplPro');
 
   bindSelect('triggerMode', 'triggerMode');
+  bindSelect('bubbleDismiss', 'bubbleDismiss');
   bindSelect('theme', 'theme');
 
   bindText('youdaoAppKey', 'youdaoAppKey');
@@ -138,6 +139,15 @@ async function init() {
   threshold.addEventListener('change', () =>
     patch({ dragThreshold: Number(threshold.value) || 6 })
   );
+
+  const bubbleStay = el('bubbleStay');
+  bubbleStay.value = config.bubbleStaySecs;
+  bubbleStay.addEventListener('change', () => {
+    // 这里不能用 `|| 6` 兜底：0 是合法值（表示一直留着），
+    // 而 0 在 JS 里是 falsy，那样写会把用户填的 0 悄悄变成 6
+    const value = Number(bubbleStay.value);
+    patch({ bubbleStaySecs: Number.isFinite(value) && value >= 0 ? Math.round(value) : 6 });
+  });
 
   const ocrLanguages = el('ocrLanguages');
   ocrLanguages.value = (config.ocrLanguages ?? []).join(',');

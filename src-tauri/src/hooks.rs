@@ -27,7 +27,10 @@ pub enum HookEvent {
     /// 鼠标往往已经移走了，用那时的位置会把气泡放到毫不相干的地方。
     Selection { x: f64, y: f64 },
     /// 任意一次左键按下。用来判断「用户点到别处了，气泡该收起来」。
-    Press { x: f64, y: f64 },
+    ///
+    /// `double` 表示这一下是不是双击的第二下。收起方式设成「双击外面」时要用它——
+    /// 截图要按下鼠标拖框，单次按下不能算数，否则永远截不到气泡。
+    Press { x: f64, y: f64, double: bool },
 }
 
 /// 发送端常驻，接收端只取一次（交给消费线程），所以用 Option 包着。
@@ -126,11 +129,26 @@ pub fn start_mouse_watcher() -> Result<(), String> {
                         state.press_at = Some(at);
                         state.press_time = Some(Instant::now());
                         state.moves_since_press = 0;
-                        log::debug!("鼠标按下 @({:.0},{:.0})", at.0, at.1);
-                        // 点到别处就该收起气泡。不能等那 6 秒的自动隐藏——
-                        // 用户划完不想操作、想接着选下一段时，悬在那儿的气泡挡路。
+
+                        // 这一下是不是双击的第二下：紧跟着上一次抬起、且几乎没挪位置。
+                        // 和下面「双击选词」那处判定分开写——那个受 trigger_on_double_click
+                        // 开关控制，而收气泡不该跟着那个开关走。
+                        let double = state
+                            .last_release
+                            .map(|(prev_time, prev_pos)| {
+                                let dx = at.0 - prev_pos.0;
+                                let dy = at.1 - prev_pos.1;
+                                Instant::now().duration_since(prev_time)
+                                    < Duration::from_millis(400)
+                                    && (dx * dx + dy * dy).sqrt() < 6.0
+                            })
+                            .unwrap_or(false);
+
+                        log::debug!("鼠标按下 @({:.0},{:.0}) 双击={}", at.0, at.1, double);
+                        // 点到别处就该收起气泡。具体收不收由配置的收起方式决定，
+                        // 判断放在消费线程做——钩子回调是阻塞的，不能在这儿查窗口位置。
                         if let Ok(tx) = CHANNEL.0.lock() {
-                            let _ = tx.send(HookEvent::Press { x: at.0, y: at.1 });
+                            let _ = tx.send(HookEvent::Press { x: at.0, y: at.1, double });
                         }
                     }
                     EventType::ButtonRelease(Button::Left) => {

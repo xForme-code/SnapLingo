@@ -104,6 +104,24 @@
         </div>
       </div>
       <div class="field">
+        <label for="bubbleDismiss">图标条收起</label>
+        <div class="control">
+          <select id="bubbleDismiss">
+            <option value="click">单击别处就收起（推荐）</option>
+            <option value="double">双击别处才收起</option>
+            <option value="timer">只按时间收起</option>
+          </select>
+          <span class="muted tiny">要截图或录屏时选后两种</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="bubbleStay">停留时长</label>
+        <div class="control">
+          <input type="number" id="bubbleStay" min="0" max="120" step="1" style="width: 80px" />
+          <span class="muted tiny">秒。没人理时自动收起，填 0 表示一直留着</span>
+        </div>
+      </div>
+      <div class="field">
         <label for="theme">外观</label>
         <div class="control">
           <select id="theme">

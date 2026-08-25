@@ -65,6 +65,19 @@ pub struct Config {
     /// Google 的 sl= 参数会出问题。老版本配置文件里没有这个字段，一定会走到。
     #[serde(default = "default_auto")]
     pub source_lang: String,
+    /// 气泡怎么收起："click" 单击外面 / "double" 双击外面 / "timer" 只按时间
+    ///
+    /// 默认单击就收——划完不想翻译、想接着选下一段时，悬在那儿的气泡挡手。
+    /// 但截图、录屏、演示时这就成了麻烦：macOS 截图要按下鼠标拖框，
+    /// **那一下按下本身就会触发收起**，导致根本截不到气泡。
+    /// 这种场合选 "double"，单次按下不算数。
+    #[serde(default = "default_bubble_dismiss")]
+    pub bubble_dismiss: String,
+
+    /// 气泡没人理时停留几秒。0 表示不自动收起。
+    #[serde(default = "default_bubble_stay")]
+    pub bubble_stay_secs: u64,
+
     /// 鼠标拖动多少像素才算一次划选，防误触
     pub drag_threshold: f64,
     /// 双击选词是否也触发
@@ -129,6 +142,14 @@ pub fn default_libre_url() -> &'static str {
     "http://localhost:5555"
 }
 
+fn default_bubble_dismiss() -> String {
+    "click".into()
+}
+
+fn default_bubble_stay() -> u64 {
+    6
+}
+
 fn default_openai_base() -> String {
     "https://api.openai.com/v1".into()
 }
@@ -148,6 +169,8 @@ impl Default for Config {
             provider: "google".into(),
             target_lang: "auto".into(),
             source_lang: "auto".into(),
+            bubble_dismiss: default_bubble_dismiss(),
+            bubble_stay_secs: default_bubble_stay(),
             drag_threshold: 6.0,
             trigger_on_double_click: true,
             min_length: 1,

@@ -193,8 +193,8 @@ fn start_selection_pipeline(app: &AppHandle) {
                 // 放在消费线程做而不是钩子里：查窗口位置要和主线程往返，
                 // 钩子回调是阻塞的，在那儿等会拖慢整个系统的鼠标派发。
                 let mut gesture = match event {
-                    hooks::HookEvent::Press { x, y } => {
-                        windows::dismiss_bubble_if_outside(&handle, x, y);
+                    hooks::HookEvent::Press { x, y, double } => {
+                        windows::dismiss_bubble_if_outside(&handle, x, y, double);
                         continue;
                     }
                     hooks::HookEvent::Selection { x, y } => (x, y),
