@@ -4,8 +4,8 @@
 
 **macOS 应用**（universal 二进制，Apple Silicon 与 Intel 通用；Intel 那一半
 只在 CI 上编译验证过，没有实机跑过）。**Windows 和 Linux 版本开发中**——
-代码路径已经打通、CI 三平台编译与单元测试通过，但还没有在真机上验证过，
-暂不提供构建产物。
+功能已经全部接通、CI 四平台编译与单元测试通过，但还没有在真机上验证过。
+Windows 想试的话，CI 每次推送都会打出安装程序，见下面「当前状态」。
 
 常驻菜单栏（系统托盘），不占 Dock。
 
@@ -249,10 +249,31 @@ helpers/macos-ocr.swift   macOS Vision OCR helper
 **只做过编译验证，没有实机跑过**
 - Intel Mac。产物是 universal 二进制，Intel 那一半只在 CI 上编译过；
   macOS 的系统翻译引擎在 Intel 机器上大概率不可用，会自动回落到其它引擎。
-- **Windows / Linux（开发中）**。功能已经全部接通——取词走模拟复制、
-  OCR 用系统 API（Windows）或 tesseract（Linux）、截图框选是自绘的全屏遮罩。
-  CI 上三个平台都编译通过、单元测试也过，但**没有一台真机跑过**，
-  所以还不发布构建产物。真机验证完会补上。
+
+### Windows / Linux 的进度
+
+功能**已经全部接通**，没有「尚未实现」的分支：取词走模拟复制（enigo）、
+OCR 用系统 API（Windows 的 `Windows.Media.Ocr`）或 tesseract（Linux）、
+截图框选是自绘的全屏透明遮罩。CI 四个平台每次推送都编译并跑单元测试，全绿。
+
+**但没有一台真机跑过。** 编译能证明的已经证明完了，剩下的全是编译证明不了的：
+合成按键在不同程序里认不认、系统 OCR 要不要装语言包、遮罩会不会盖住任务栏、
+多显示器和非 100% 缩放下坐标准不准。
+
+想帮忙验证的话，**Windows 安装程序可以直接下载**：进
+[Actions](../../actions) → 点最新一次成功的运行 → 页面底部 Artifacts →
+`SnapLingo-windows-installer`（保留 30 天）。没有代码签名证书，
+SmartScreen 会拦一下，点「更多信息 → 仍要运行」。
+
+已知的两处差异，都不是 bug 是尚未补齐：
+
+- **API Key 在 Windows / Linux 上仍明文存在 `config.json`**。macOS 走了钥匙串，
+  Windows 的 DPAPI / 凭据管理器还没接
+- **语言转换（原地替换）在 Windows 上可能退化**成「译文已复制，请手动粘贴」。
+  它要把焦点切回原程序，而 Windows 对 `SetForegroundWindow` 有限制。
+  理论上我们那一刻是前台进程、符合放行条件，但没实测过
+
+正式发布要等真机验证通过。
 
 ---
 

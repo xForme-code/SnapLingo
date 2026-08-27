@@ -213,6 +213,11 @@ ad-hoc 签名的每次重编译都会被当成另一个程序，会再问一次�
 而 100% 的机器上完全正常；少加原点，在副屏上框选会截到主屏对应位置的内容。
 `to_physical()` 有单元测试钉着这两条。
 
+**Windows 的 CI 步骤默认跑在 PowerShell 里，不是 bash。** 同一段命令行内联 JSON，
+在 macOS 的脚本里工作正常，搬到 Windows 的 workflow 就报解析失败——PowerShell
+不把反斜杠当转义字符，`--config "{\"bundle\":...}"` 会被原样拆成 `{\` 传下去。
+解法是绕开引号规则本身：把配置写成文件再传路径，并显式写 `shell: bash`。
+
 **bash 脚本里全角括号紧贴变量名会出事。** `"...（$VAR）"` 里的 `）` 是多字节字符，
 bash 会把它当成变量名的一部分。要写成 `${VAR}`。
 
@@ -252,5 +257,7 @@ osascript -e 'tell application "System Events" to keystroke "c" using command do
 
 **没确认**：拖选取词在终端和 PDF 阅读器里能否成功。这是唯一的阻塞项。
 
-**没做**：Windows / Linux 整体没在真机验证过。代码路径成立、CI 三平台编译与
-单元测试通过，但没有一台真机跑过——所以 README 里不提这两个平台，等真跑通再写。
+**没做**：Windows / Linux 整体没在真机验证过。功能全部接通、CI 四平台编译与
+单元测试通过，Windows 安装程序也由 CI 产出（Actions 页面的 artifact），
+但没有一台真机跑过。另外这两个平台的 API Key 仍明文存在 config.json——
+macOS 走了钥匙串，DPAPI / Secret Service 还没接。
