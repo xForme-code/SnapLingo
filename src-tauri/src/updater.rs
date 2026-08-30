@@ -6,6 +6,8 @@
 //! 更新包由 `tauri signer` 的私钥签名，公钥编译进应用。下载下来的包验签
 //! 不通过就直接丢弃，所以即使 Release 被人替换了文件也装不进去。
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -16,27 +18,63 @@ use tauri_plugin_updater::UpdaterExt;
 /// 与其无限期等待，不如快点失败并说清原因。
 const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
 
-/// 启动后延迟多久做静默检查。
+/// 启动后延迟多久做第一次检查。
 ///
 /// 不在启动瞬间查：那会儿用户可能正等着划词，网络请求和对话框都是打扰。
 /// 而且启动初期网络往往还没就绪（尤其代理刚拉起来时）。
 const STARTUP_DELAY: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// 静默检查：有更新才出声，没有就什么都不做。
-pub fn check_on_startup(app: &AppHandle) {
-    // 用户关掉了就彻底不查：不发请求、不弹窗。
-    // 托盘菜单里的「检查更新…」不受影响，想查随时手动查。
-    if !crate::config::get().auto_check_update {
-        log::info!("自动检查更新已关闭，跳过启动检查");
-        return;
-    }
+/// 之后每隔多久再查一次。
+///
+/// 这是个常驻菜单栏的工具，用户开着几天几周很正常。只在启动时查一次的话，
+/// 他永远不会知道有新版本——除非哪天想起来手动点一下。
+const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+
+/// 后台的定期静默检查：有更新才出声，没有就什么都不做。
+///
+/// 开关是**每轮都读**的，不是启动时读一次。这样用户在设置里打开自动检查后
+/// 不需要重启——之前正是这样：启动时开关是关的，后来打开了，程序却毫不知情。
+pub fn start_background_checks(app: &AppHandle) {
+    // 记下启动时开关的真实状态，供 setting_just_enabled 比对。
+    // 必须在这里记：等到用户保存设置时再读就晚了——那时内存里已经是新值。
+    ENABLED.store(crate::config::get().auto_check_update, Ordering::Relaxed);
 
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(STARTUP_DELAY).await;
+        loop {
+            if crate::config::get().auto_check_update {
+                if let Err(err) = check(&handle, false).await {
+                    // 静默检查失败不值得打扰用户——断网、Release 还没发都会走到这
+                    log::debug!("定期检查更新失败（忽略）: {err}");
+                }
+            }
+            tokio::time::sleep(CHECK_INTERVAL).await;
+        }
+    });
+}
+
+/// 自动检查开关当前的状态。用来识别「关 → 开」这一次跳变。
+static ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// 开关是不是刚从关变成开。
+///
+/// 只在这一次跳变时返回 true。不判断跳变的话，用户每保存一次设置
+/// （改个快捷键、换个引擎）都会多查一次更新。
+pub fn setting_just_enabled(now: bool) -> bool {
+    let was = ENABLED.swap(now, Ordering::Relaxed);
+    now && !was
+}
+
+/// 用户刚在设置里打开自动检查：立刻查一次。
+///
+/// 不这么做的话，他打开开关之后最多要等到下一个检查周期才有反应，
+/// 而那可能是几小时后——看起来就像这个开关没生效。
+pub fn check_after_enabling(app: &AppHandle) {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
         if let Err(err) = check(&handle, false).await {
-            // 启动时的检查失败不值得打扰用户——断网、Release 还没发都会走到这
-            log::debug!("启动时检查更新失败（忽略）: {err}");
+            log::debug!("打开自动检查后的首次检查失败（忽略）: {err}");
         }
     });
 }

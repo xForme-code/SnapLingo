@@ -129,7 +129,7 @@ pub fn run() {
 
             // 只在首次运行时提示权限；之后交给功能失败时的按需提示
             permissions::check_on_startup(&handle, first_run);
-            updater::check_on_startup(&handle);
+            updater::start_background_checks(&handle);
 
             if first_run {
                 // 落盘一份默认配置，这样「首次运行」只判定一次
@@ -648,6 +648,13 @@ pub fn apply_config_side_effects(app: &AppHandle, cfg: &config::Config) {
     register_shortcuts(app);
     apply_autostart(app, cfg.autostart);
     refresh_tray(app);
+
+    // 刚把自动检查更新打开：立刻查一次，别让用户等到下一个周期（可能是几小时后），
+    // 否则看起来就像这个开关没生效。
+    if updater::setting_just_enabled(cfg.auto_check_update) {
+        log::info!("自动检查更新刚被打开，立刻检查一次");
+        updater::check_after_enabling(app);
+    }
 }
 
 fn apply_autostart(app: &AppHandle, enabled: bool) {
