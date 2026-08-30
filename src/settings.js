@@ -219,6 +219,9 @@ async function init() {
   });
 
   el('ocrEngine').textContent = meta.ocrEngine;
+  // 版本号本地就有，不该像以前那样非得点「检查更新」才知道——
+  // 那既要联网又可能失败
+  el('version').textContent = meta.version ? `v${meta.version}` : '';
   el('configPath').textContent = meta.configPath;
 
   renderHotkeys();

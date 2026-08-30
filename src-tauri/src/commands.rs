@@ -49,6 +49,9 @@ pub struct Meta {
     config_path: String,
     platform: &'static str,
     ocr_engine: &'static str,
+    /// 当前版本。之前只有点「检查更新」才能知道自己装的是哪一版，
+    /// 而那要联网、还可能失败——版本号是本地就有的信息，不该依赖网络才能看到。
+    version: String,
 }
 
 #[derive(Serialize)]
@@ -85,6 +88,7 @@ pub fn get_meta(app: AppHandle) -> Meta {
         } else {
             "Tesseract（需自行安装）"
         },
+        version: app.package_info().version.to_string(),
     }
 }
 

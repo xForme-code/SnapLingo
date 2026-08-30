@@ -9,6 +9,13 @@
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
+/// 检查更新的时限。
+///
+/// 不设的话连不上时会一直挂着，用户点完「检查更新…」什么反应都没有，
+/// 只能猜是不是坏了。GitHub 在部分网络环境下本来就时通时不通，
+/// 与其无限期等待，不如快点失败并说清原因。
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
+
 /// 启动后延迟多久做静默检查。
 ///
 /// 不在启动瞬间查：那会儿用户可能正等着划词，网络请求和对话框都是打扰。
@@ -41,13 +48,18 @@ pub fn check_manually(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         if let Err(err) = check(&handle, true).await {
             log::warn!("检查更新失败: {err}");
-            notify(&handle, "检查更新失败", &format!("{err}"));
+            notify(&handle, "检查更新失败", &explain(&err));
         }
     });
 }
 
 async fn check(app: &AppHandle, verbose: bool) -> tauri_plugin_updater::Result<()> {
-    let update = app.updater()?.check().await?;
+    let update = app
+        .updater_builder()
+        .timeout(CHECK_TIMEOUT)
+        .build()?
+        .check()
+        .await?;
 
     let Some(update) = update else {
         log::info!("检查更新：已是最新版本");
@@ -110,6 +122,34 @@ async fn check(app: &AppHandle, verbose: bool) -> tauri_plugin_updater::Result<(
     // 安装完必须重启才能生效
     log::info!("更新已安装，重启应用");
     handle.restart();
+}
+
+/// 把底层报错翻译成用户能照着做点什么的话。
+///
+/// 原样透出的话，用户看到的是「error sending request for url
+/// (https://github.com/.../latest.json)」——英文、带一串他不关心的地址、
+/// 而且完全没说该怎么办。更新地址在 GitHub 上，部分网络环境下连不通是常事，
+/// 这时候需要的是「检查网络或代理」，不是一段技术细节。
+fn explain(err: &tauri_plugin_updater::Error) -> String {
+    let raw = err.to_string();
+    let networkish = raw.contains("error sending request")
+        || raw.contains("timed out")
+        || raw.contains("dns")
+        || raw.contains("connect");
+
+    if networkish {
+        // 分行拼接而不是用反斜杠续行：续行在某些编辑/生成流程里会丢，
+        // 丢了就把源码的缩进空格原样带进弹窗，显示成一串莫名其妙的空隙
+        [
+            "连不上 GitHub（更新信息放在那里）。",
+            "",
+            "请检查网络或代理设置后重试。",
+            "也可以到 github.com/xForme-code/SnapLingo/releases 手动下载。",
+        ]
+        .join("\n")
+    } else {
+        raw
+    }
 }
 
 fn notify(app: &AppHandle, title: &str, message: &str) {
