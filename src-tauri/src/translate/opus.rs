@@ -35,14 +35,66 @@ fn resolve_direction(text: &str, source: &str, target: &str) -> (String, String)
     (from, base(target))
 }
 
+/// OPUS-MT 对词表里没有的词吐这个字符（U+2047 DOUBLE QUESTION MARK）。
+///
+/// 字体多半把它画成两个问号，用户看到的就是「?? ??」——像乱码，
+/// 完全看不出是「这个词模型不认识」。
+const UNKNOWN: char = '\u{2047}';
+
 /// 清理 sentencepiece 解码残留。
 ///
 /// ct2rs 的解码偶尔会把词边界符 U+2581（▁）原样吐出来，中文标点前也会多空格。
 /// 这些是解码层的毛病，不清掉直接就显示给用户了。
+///
+/// 未知词标记也在这里去掉：留着它只会让译文看起来像乱码。真正「整句都是未知词」
+/// 的情况由 looks_degenerate 拦住，不会靠这里悄悄抹平。
 fn clean(text: &str) -> String {
     let stripped: String = text.replace('\u{2581}', " ");
+
+    // 未知词标记要**连同它占的位置**一起去掉。只删字符的话，
+    // 「速褐狐 ⁇ .」会变成「速褐狐  .」——两个空格加一个孤零零的句点，
+    // 看着比留着标记还奇怪。
+    //
+    // 只在真的出现标记时才走这条重排路径，正常译文的空格原样不动。
+    let stripped = if stripped.contains(UNKNOWN) {
+        let mut out = String::with_capacity(stripped.len());
+        for token in stripped.split_whitespace() {
+            if token.chars().all(|c| c == UNKNOWN) {
+                continue;
+            }
+            // 标点紧跟前一个词，不补空格
+            let tight = token.starts_with(|c: char| {
+                matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')' | ']' | '}')
+            });
+            if !out.is_empty() && !tight {
+                out.push(' ');
+            }
+            out.push_str(token);
+        }
+        out
+    } else {
+        stripped
+    };
+
     // 复用 OCR 那套 CJK 空格清理：中文字符之间的空格要吃掉，中英之间要留
     crate::ocr::normalize(stripped.trim())
+}
+
+/// 这段「译文」是不是已经废了。
+///
+/// OPUS-MT 是单向模型：en→zh 的词表里没有中文字，反之亦然。喂给它中英混排的
+/// 内容时，另一种语言的每个字都会变成未知词，输出是一串 ⁇ 或者干脆是
+/// 毫不相干的词。这种结果不该当成译文展示——宁可如实说「翻不了」，
+/// 也不要给用户一段看起来像翻译、实际毫无意义的文字。
+fn looks_degenerate(raw: &str) -> bool {
+    let total = raw.chars().filter(|c| !c.is_whitespace()).count();
+    if total == 0 {
+        return true;
+    }
+    let unknown = raw.chars().filter(|c| *c == UNKNOWN).count();
+    // 三成以上是未知词就认定失败。阈值不苛刻：正常译文里
+    // 偶尔冒出一两个生僻词是常事，整段都是才说明方向或语言对不上
+    unknown * 10 >= total * 3
 }
 
 /// 按句切分。
@@ -87,6 +139,12 @@ fn split_sentences(text: &str, limit: usize) -> Vec<String> {
 fn translate_blocking(text: &str, source: &str, target: &str) -> Result<Translation> {
     let (from, to) = resolve_direction(text, source, target);
 
+    // 源和目标同一种语言时没有对应模型，报出去会是
+    // 「OPUS_MODEL_MISSING:zh-zh」——用户看了完全不知道发生了什么。
+    if from == to {
+        return Err(anyhow!("原文和目标语言都是{from}，不需要翻译"));
+    }
+
     let model_id = localmodel::installed_for(&from, &to).ok_or_else(|| {
         anyhow!(
             "{MODEL_MISSING}:{from}-{to}"
@@ -112,12 +170,22 @@ fn translate_blocking(text: &str, source: &str, target: &str) -> Result<Translat
         .translate_batch(&segments, &ct2rs::TranslationOptions::default(), None)
         .map_err(|e| anyhow!("离线翻译失败: {e}"))?;
 
-    let joined = output
+    let raw = output
         .into_iter()
-        .map(|(text, _score)| clean(&text))
-        .filter(|s| !s.is_empty())
+        .map(|(text, _score)| text)
         .collect::<Vec<_>>()
         .join("");
+
+    // 先判废再清理：清理会把 ⁇ 抹掉，抹完就看不出这段译文本来全是未知词了
+    if looks_degenerate(&raw) {
+        return Err(anyhow!(
+            "离线模型翻不了这段内容。它是单向模型（{from}→{to}），\
+             遇到中英混排时另一种语言的字不在词表里。可以改用联网引擎，\
+             或只选中同一种语言的部分。"
+        ));
+    }
+
+    let joined = clean(&raw);
 
     Ok(Translation {
         text: joined,
@@ -150,6 +218,28 @@ mod tests {
     }
 
     #[test]
+    fn strips_unknown_token_marker() {
+        // U+2047 是 OPUS-MT 的未知词标记，字体画成两个问号，
+        // 留着它译文看起来就是乱码
+        // 标记连同它占的空位一起去掉，不能留下「速褐狐  .」这种双空格
+        assert_eq!(clean("速褐狐 \u{2047} ."), "速褐狐.");
+        assert_eq!(clean("a \u{2047} b"), "a b");
+        // 正常译文的空格不受影响
+        assert_eq!(clean("hello world"), "hello world");
+    }
+
+    #[test]
+    fn detects_degenerate_output() {
+        // 整段都是未知词 —— 这是中英混排喂给单向模型的典型结果
+        assert!(looks_degenerate("\u{2047} \u{2047}"));
+        assert!(looks_degenerate(""));
+        assert!(looks_degenerate("   "));
+        // 偶尔一两个生僻词不算废
+        assert!(!looks_degenerate("这是一段正常的译文，只有一个 \u{2047} 没认出来"));
+        assert!(!looks_degenerate("完全正常的译文"));
+    }
+
+    #[test]
     fn guesses_direction_from_text() {
         assert_eq!(resolve_direction("Hello world", "auto", "zh-CN"), ("en".into(), "zh".into()));
         assert_eq!(resolve_direction("你好世界", "auto", "en"), ("zh".into(), "en".into()));
@@ -170,6 +260,30 @@ mod tests {
     /// 端到端跑一遍真实推理：模型查找 → 分词 → CTranslate2 → 清理。
     /// 需要已经下载好 en-zh 模型，所以默认不跑：
     ///   cargo test --lib -- --ignored --nocapture real_offline
+    /// 中英混排喂给单向模型时，必须报错而不是给出一段看似译文的乱码。
+    ///
+    /// 真实案例：用户选中「discouraged的」，走 en→zh 离线模型，
+    /// 面板上显示「?? ??」——那是 U+2047 未知词标记，字体画成两个问号。
+    ///   cargo test --lib -- --ignored --nocapture mixed_language
+    #[test]
+    #[ignore]
+    fn mixed_language_is_reported_not_faked() {
+        if localmodel::installed_for("en", "zh").is_none() {
+            panic!("没有已安装的 en→zh 模型，先在设置里下载");
+        }
+
+        // 纯英文：正常翻译
+        let ok = translate_blocking("The quick brown fox.", "auto", "zh-CN")
+            .expect("纯英文应该翻得出来");
+        println!("纯英文 → {:?}", ok.text);
+        assert!(!ok.text.contains(UNKNOWN), "译文里不该留下未知词标记");
+
+        // 源和目标同语言：给人话，不是 OPUS_MODEL_MISSING:zh-zh
+        let err = translate_blocking("你好世界", "zh", "zh-CN").unwrap_err().to_string();
+        println!("中译中 → {err}");
+        assert!(!err.contains("OPUS_MODEL_MISSING"), "不该把内部标记抛给用户");
+    }
+
     #[test]
     #[ignore]
     fn real_offline_translation() {
