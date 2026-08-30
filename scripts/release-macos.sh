@@ -86,12 +86,24 @@ mv "$TARBALL" "$BUNDLE/macos/$ASSET"
 mv "$SIGFILE" "$BUNDLE/macos/$ASSET.sig"
 SIGFILE="$BUNDLE/macos/$ASSET.sig"
 
-echo "[manifest] 生成 latest.json"
-python3 - "$VERSION" "$SIGFILE" "$REPO" "$TAG" "$ASSET" "$ARCHS" > "$BUNDLE/latest.json" <<'PY'
-import json, sys, datetime
-version, sigfile, repo, tag, asset, archs = sys.argv[1:7]
+echo "[manifest] 生成 latest.json 与 latest-cn.json"
+# 出两份清单：
+#   latest.json     地址指向 github.com，给能直连的网络
+#   latest-cn.json  地址走镜像，给 github.com 连不通的网络（国内常见）
+#
+# 为什么必须是两份：镜像只是个透明代理，它转发的 latest.json 里下载地址仍然
+# 是 github.com——查得到有更新，却下不下来。所以走镜像那条路，清单里的
+# 下载地址也得是镜像地址。
+#
+# 安全性上可控：更新包由私钥签名、公钥编译在应用里，镜像即使被人控制也塞不进
+# 恶意更新，签名对不上直接丢弃。它最多让人查不到更新或拿到旧数据。
+MIRROR="https://gh-proxy.com/github.com"
+python3 - "$VERSION" "$SIGFILE" "$REPO" "$TAG" "$ASSET" "$ARCHS" "$BUNDLE" "$MIRROR" <<'PY'
+import json, sys, datetime, os
+version, sigfile, repo, tag, asset, archs, bundle, mirror = sys.argv[1:9]
 signature = open(sigfile).read().strip()
 url = f"https://github.com/{repo}/releases/download/{tag}/{asset}"
+mirror_url = f"{mirror}/{repo}/releases/download/{tag}/{asset}"
 
 # platforms 的键必须和产物里真有的架构对上。多写一个键，那个架构的用户会
 # 下载到跑不了的包；少写一个，那批用户就永远收不到更新。所以照 lipo 报出来的
@@ -102,12 +114,16 @@ platforms = {mapping[a]: {"signature": signature, "url": url} for a in slices if
 if len(slices) > 1:
     platforms["darwin-universal"] = {"signature": signature, "url": url}
 
-print(json.dumps({
-    "version": version,
-    "notes": f"SnapLingo {version}",
-    "pub_date": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-    "platforms": platforms,
-}, ensure_ascii=False, indent=2))
+def manifest(download):
+    return json.dumps({
+        "version": version,
+        "notes": f"SnapLingo {version}",
+        "pub_date": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "platforms": {k: {"signature": signature, "url": download} for k in platforms},
+    }, ensure_ascii=False, indent=2)
+
+open(os.path.join(bundle, "latest.json"), "w").write(manifest(url))
+open(os.path.join(bundle, "latest-cn.json"), "w").write(manifest(mirror_url))
 PY
 
 # ---------------------------------------------------------------- 发布
@@ -122,10 +138,10 @@ fi
 
 if gh release view "$TAG" >/dev/null 2>&1; then
   echo "[publish] Release 已存在，覆盖上传资产"
-  gh release upload "$TAG" "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" --clobber
+  gh release upload "$TAG" "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" "$BUNDLE/latest-cn.json" --clobber
 else
   gh release create "$TAG" \
-    "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" \
+    "$DMG" "$BUNDLE/macos/$ASSET" "$BUNDLE/latest.json" "$BUNDLE/latest-cn.json" \
     --title "SnapLingo $TAG" "${NOTES_ARG[@]}"
 fi
 
