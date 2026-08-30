@@ -129,6 +129,7 @@ pub fn run() {
 
             // 只在首次运行时提示权限；之后交给功能失败时的按需提示
             permissions::check_on_startup(&handle, first_run);
+            windows::log_display_layout(&handle);
             updater::start_background_checks(&handle);
 
             if first_run {

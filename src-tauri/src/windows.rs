@@ -99,6 +99,33 @@ pub fn forget_anchor() {
     }
 }
 
+/// 启动时把显示器布局记进日志。
+///
+/// 多屏下的弹窗定位反复出错，根源都是「逻辑点」和「物理像素」在某个环节混了。
+/// 光看代码推不出来——各家 API 用哪种单位并不一致，而且随系统版本变。
+/// 把真实数值记下来，出问题时一看日志就知道是哪一步错位了。
+pub fn log_display_layout(app: &AppHandle) {
+    let Ok(monitors) = app.available_monitors() else {
+        log::warn!("读不到显示器列表");
+        return;
+    };
+    for m in &monitors {
+        let scale = m.scale_factor();
+        let p = m.position();
+        let sz = m.size();
+        log::info!(
+            "显示器「{}」缩放={scale} 物理原点=({},{}) 物理尺寸={}x{} 逻辑原点=({:.0},{:.0}) 逻辑尺寸={:.0}x{:.0}",
+            m.name().cloned().unwrap_or_default(),
+            p.x, p.y, sz.width, sz.height,
+            p.x as f64 / scale, p.y as f64 / scale,
+            sz.width as f64 / scale, sz.height as f64 / scale,
+        );
+    }
+    if let Ok(pos) = app.cursor_position() {
+        log::info!("当前光标（Tauri 报的）=({:.0},{:.0})", pos.x, pos.y);
+    }
+}
+
 /// 拿一个用于定位弹窗的坐标：优先用记下的手势位置，其次查实时光标
 fn anchor_or_cursor(app: &AppHandle, anchor: Option<(f64, f64)>, scale: f64) -> (f64, f64) {
     anchor
@@ -141,8 +168,13 @@ fn place_near(
         }
 
         log::debug!(
-            "定位: 锚点=({:.0},{:.0}) 窗口={:.0}x{:.0} 屏原点=({:.0},{:.0}) 屏幕={:.0}x{:.0} → ({:.0},{:.0})",
+            "定位: 锚点=({:.0},{:.0}) 窗口={:.0}x{:.0} 命中屏「{}」缩放={} \
+             物理原点=({},{}) 物理尺寸={}x{} → 逻辑原点=({:.0},{:.0}) 逻辑尺寸={:.0}x{:.0} → 摆到 ({:.0},{:.0})",
             cursor.0, cursor.1, size.0, size.1,
+            monitor.name().cloned().unwrap_or_default(),
+            monitor.scale_factor(),
+            monitor.position().x, monitor.position().y,
+            monitor.size().width, monitor.size().height,
             origin.x, origin.y, area.width, area.height, x, y
         );
     } else {
