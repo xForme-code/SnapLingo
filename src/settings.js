@@ -184,15 +184,39 @@ async function init() {
     .join('');
   provider.value = config.provider;
 
+  /// 「自动选择」是挨个试已配置的引擎。一个 Key 都没配时，候选池里只剩免配置的
+  /// Google——而它是免费公开接口，限流频繁、国内也常直连不通。这时候界面上什么
+  /// 都不说的话，用户会以为自动选路在替他兜底，实际上它只有一条路可走。
+  const hasDomesticEngine = () =>
+    (config.youdaoAppKey && config.youdaoAppSecret) ||
+    (config.baiduAppId && config.baiduSecret) ||
+    config.deeplApiKey ||
+    config.openaiApiKey ||
+    config.claudeApiKey;
+
   const showNote = () => {
     const found = meta.providers.find((p) => p.id === provider.value);
-    el('providerNote').textContent = found ? found.note : '';
+    let note = found ? found.note : '';
+    if (provider.value === 'auto' && !hasDomesticEngine()) {
+      note = '当前只有 Google 可用（它免配置，但限流频繁、国内常连不通）。'
+        + '在下面配置有道或百度的 Key 后，自动选择才真正有备选。';
+    }
+    el('providerNote').textContent = note;
   };
   provider.addEventListener('change', async () => {
     await patch({ provider: provider.value });
     showNote();
   });
   showNote();
+
+  // 配完 Key 后提示要立刻跟着变，否则用户填好了还看到「只有 Google 可用」。
+  //
+  // 用配置变更事件而不是在 change 里延时刷新：保存是异步的（要走一趟 IPC），
+  // 延时多少都是在赌它已经完成，赌输了就读到旧值。等事件来最省心。
+  void api.on('config:changed', (next) => {
+    if (next) config = next;
+    showNote();
+  });
 
   el('ocrEngine').textContent = meta.ocrEngine;
   el('configPath').textContent = meta.configPath;
