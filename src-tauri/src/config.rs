@@ -367,7 +367,22 @@ pub fn is_mostly_cjk(text: &str) -> bool {
             latin += 1;
         }
     }
-    cjk > 0 && cjk >= latin
+
+    if cjk == 0 {
+        return false;
+    }
+
+    // 按占比判断，不用「谁多算谁」。
+    //
+    // 中英混排不是对称的：中文里夹英文术语极其常见（「这个 feature 的 deadline
+    // 是下周三」「KPI double 了但 headcount 没加」），而英文里夹汉字很少见。
+    // 按多数票判的话，上面那句 36 个字母压过 18 个汉字，会被判成英语——
+    // 于是自动目标语言选成中文、离线模型也挑错方向，最后要么翻不出来，
+    // 要么把中文原样「翻译」一遍。
+    //
+    // 反过来「I met 李雷 yesterday」这种英文夹人名的，汉字占比很低，
+    // 仍然会被正确判成英语。
+    cjk * 5 >= cjk + latin
 }
 
 /// 把 "auto" 解析成具体目标语言
@@ -408,6 +423,50 @@ pub fn target_languages() -> Vec<(&'static str, &'static str)> {
         ("pt", "Português"),
         ("it", "Italiano"),
     ]
+}
+
+#[cfg(test)]
+mod language_tests {
+    use super::{is_mostly_cjk, resolve_target};
+
+    /// 中文里夹英文术语是中文技术/职场写作的常态，不能因为字母比汉字多
+    /// 就判成英语——那会让自动目标语言和离线模型的方向双双选错。
+    #[test]
+    fn treats_chinese_with_english_terms_as_chinese() {
+        // 真实案例：字母 36 个、汉字 18 个，按「谁多算谁」会判成英语
+        assert!(is_mostly_cjk(
+            "这个 feature 的 deadline 是下周三，PM 说要先 code review 再 merge 到 main 分支。"
+        ));
+        assert!(is_mostly_cjk("我们今年的 KPI double 了，但 headcount 一个没加。"));
+        assert!(is_mostly_cjk("身边的清北同学几乎没有不 discouraged 的。"));
+    }
+
+    #[test]
+    fn english_with_a_few_chinese_chars_stays_english() {
+        // 英文里夹个人名，汉字占比很低，仍然算英文
+        assert!(!is_mostly_cjk("I met 李雷 yesterday at the office."));
+        // 一个英文单词后面拖了个「的」，用户想知道的是这个英文词的意思
+        assert!(!is_mostly_cjk("discouraged的"));
+    }
+
+    #[test]
+    fn pure_text_is_unambiguous() {
+        assert!(is_mostly_cjk("你好世界"));
+        assert!(!is_mostly_cjk("Hello world"));
+        // 没有任何汉字时一律算非中文，别把纯符号判成中文
+        assert!(!is_mostly_cjk("123 !@#"));
+        assert!(!is_mostly_cjk(""));
+    }
+
+    #[test]
+    fn auto_target_follows_the_detected_language() {
+        // 中文（含英文术语）→ 译成英文
+        assert_eq!(resolve_target("这个 feature 的 deadline 是下周三", "auto"), "en");
+        // 英文 → 译成中文
+        assert_eq!(resolve_target("Hello world", "auto"), "zh-CN");
+        // 明确指定时不猜
+        assert_eq!(resolve_target("Hello world", "ja"), "ja");
+    }
 }
 
 #[cfg(all(test, target_os = "macos"))]
