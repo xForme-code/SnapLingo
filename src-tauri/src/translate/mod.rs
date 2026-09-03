@@ -566,19 +566,31 @@ async fn local_fallback(
 
     let system_err = if pack == system::Availability::Installed {
         match dispatch(app, "system", prepared, source_lang, target_lang).await {
-            Ok(translation) => return Ok(translation),
-            Err(err) => err,
+            Ok(translation) => {
+                log::info!("本次由系统翻译完成（{source_lang}→{target_lang}）");
+                return Ok(translation);
+            }
+            Err(err) => {
+                log::info!("系统翻译可用但这次失败了: {err}");
+                err
+            }
         }
     } else {
-        log::debug!("系统翻译语言包未就绪（{pack:?}），跳过它直接用离线模型");
+        // 用 INFO 而不是 DEBUG：这一步直接决定用户拿到哪个引擎的译文，
+        // 而正式版只记 INFO——出问题时如果这行不在日志里，就只能靠猜。
+        // 语言对也要记：光说「语言包未就绪」，不知道问的是哪一对，无从核对。
+        log::info!("系统翻译语言包未就绪（{pack:?}，{source_lang}→{target_lang}），改用离线模型");
         anyhow!("{}", system::NEEDS_DOWNLOAD)
     };
 
     // OPUS-MT 模型已经下载好的话，它比「让用户去下系统语言包」更直接可用
     match dispatch(app, "opus", prepared, source_lang, target_lang).await {
-        Ok(translation) => return Ok(translation),
+        Ok(translation) => {
+            log::info!("本次由离线模型完成（{source_lang}→{target_lang}）");
+            return Ok(translation);
+        }
         Err(opus_err) => {
-            log::debug!("离线模型也不可用: {opus_err}");
+            log::info!("离线模型也不可用: {opus_err}");
         }
     }
 

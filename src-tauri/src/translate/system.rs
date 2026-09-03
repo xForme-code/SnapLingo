@@ -120,12 +120,14 @@ pub fn availability(app: &tauri::AppHandle, source: &str, target: &str) -> Avail
 
     let parsed = match run_helper(
         app,
-        vec!["--check".into(), source_apple, target_apple.into()],
+        vec!["--check".into(), source_apple.clone(), target_apple.into()],
         None,
     ) {
         Ok(parsed) => parsed,
         Err(err) => {
-            log::warn!("查询系统翻译语言包状态失败: {err}");
+            // 这条以前也会被当成「语言包没装」，于是明明装了却走了离线模型。
+            // 单独记清楚：查询失败和真的没装，处理方式应该不一样。
+            log::warn!("查询系统翻译语言包状态失败（{source_apple}→{target_apple}）: {err}");
             return Availability::Unavailable;
         }
     };
@@ -301,6 +303,9 @@ pub fn availability_cached(app: &tauri::AppHandle, source: &str, target: &str) -
     }
 
     let status = availability(app, source, target);
+    // 记在 INFO：这个结果决定了走系统翻译还是离线模型，而正式版只记 INFO。
+    // 之前是 DEBUG，线上出问题时完全看不出是查了哪一对、查出了什么。
+    log::info!("系统翻译语言包查询 {source}→{target} 结果 {status:?}");
     if let Ok(mut cache) = AVAILABILITY_CACHE.lock() {
         cache.insert(key, (status, Instant::now()));
     }
